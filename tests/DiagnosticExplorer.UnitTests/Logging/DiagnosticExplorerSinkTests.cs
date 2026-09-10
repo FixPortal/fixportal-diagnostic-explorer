@@ -14,6 +14,7 @@ namespace DiagnosticExplorer.UnitTests.Logging;
 ///     property that <c>ForContext&lt;T&gt;</c> attaches — so deriving a routable category from an
 ///     event is this adapter's distinguishing job.
 /// </summary>
+[Collection(DiagnosticConfigurationCollection.Name)]
 public class DiagnosticExplorerSinkTests
 {
     private static EventSinkRouteOptions RoutesFor(string pattern) =>

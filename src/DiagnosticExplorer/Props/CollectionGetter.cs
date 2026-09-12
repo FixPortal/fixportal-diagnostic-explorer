@@ -17,6 +17,7 @@ internal class CollectionGetter : PropertyGetter
     private readonly Func<object, object> _valueFunc;
     private readonly Func<object, object> _descrFunc;
     private readonly Func<object, object> _catFunc;
+    private readonly Func<object, int, string> _indexedNameFormatter;
     private readonly bool _initiallyExpanded;
     private readonly NestedPropertyRenderMode _itemRenderMode;
 
@@ -47,8 +48,13 @@ internal class CollectionGetter : PropertyGetter
         _separator = attr.Separator ?? Environment.NewLine;
         _mode = attr.Mode;
 
-        Type genericType = GenericObjectCache.FindGenericInterface(info.PropertyType, typeof(IDictionary<,>));
-        bool isDictionary = typeof(IDictionary).IsAssignableFrom(info.PropertyType);
+        // info is null for a configured delegate or direct-field property (BuildPropertyGetters
+        // passes info: null, delegateProperty: configuration) -- fall back to the configured value
+        // type so a collection-typed delegate/field property doesn't NRE on the very first render
+        // and blank every property of the type it belongs to.
+        Type collectionType = info?.PropertyType ?? configuration?.ValueType;
+        Type genericType = GenericObjectCache.FindGenericInterface(collectionType, typeof(IDictionary<,>));
+        bool isDictionary = typeof(IDictionary).IsAssignableFrom(collectionType);
 
         if (genericType != null)
         {
@@ -66,11 +72,38 @@ internal class CollectionGetter : PropertyGetter
         }
         else
         {
-            _nameFunc = PropertyToFunction(GetListProperty(info, attr.NameProperty), isStatic);
-            _valueFunc = PropertyToFunction(GetListProperty(info, attr.ValueProperty), isStatic);
-            _descrFunc = PropertyToFunction(GetListProperty(info, attr.DescriptionProperty), isStatic);
-            _catFunc = PropertyToFunction(GetListProperty(info, attr.CategoryProperty), isStatic);
+            _nameFunc = PropertyToFunction(GetListProperty(collectionType, attr.NameProperty), isStatic);
+            _valueFunc = PropertyToFunction(GetListProperty(collectionType, attr.ValueProperty), isStatic);
+            _descrFunc = PropertyToFunction(GetListProperty(collectionType, attr.DescriptionProperty), isStatic);
+            _catFunc = PropertyToFunction(GetListProperty(collectionType, attr.CategoryProperty), isStatic);
         }
+
+        // Configured formatter delegates take precedence over the reflected NameProperty/
+        // ValueProperty/etc. above -- ListItems(x => x.WithName(...)) and ConcatItems(format)
+        // were previously accepted and silently ignored because only the *Property options were
+        // ever read here.
+        if (attr.NameFormatter != null)
+        {
+            Func<object, string> nameFormatter = attr.NameFormatter;
+            _nameFunc = x => nameFormatter(x);
+        }
+        _indexedNameFormatter = attr.IndexedNameFormatter;
+        if (attr.ValueFormatter != null)
+        {
+            Func<object, string> valueFormatter = attr.ValueFormatter;
+            _valueFunc = x => valueFormatter(x);
+        }
+        if (attr.DescriptionFormatter != null)
+        {
+            Func<object, string> descriptionFormatter = attr.DescriptionFormatter;
+            _descrFunc = x => descriptionFormatter(x);
+        }
+        if (attr.CategoryFormatter != null)
+        {
+            Func<object, string> categoryFormatter = attr.CategoryFormatter;
+            _catFunc = x => categoryFormatter(x);
+        }
+
         _maxItems = attr.MaxItems;
         _initiallyExpanded = attr.InitiallyExpanded;
         _itemRenderMode = attr.PrimaryPropertiesOnly
@@ -97,21 +130,21 @@ internal class CollectionGetter : PropertyGetter
         }
     }
 
-    private static PropertyInfo GetListProperty(PropertyInfo info, string name)
+    private static PropertyInfo GetListProperty(Type collectionType, string name)
     {
-        if (string.IsNullOrEmpty(name))
+        if (string.IsNullOrEmpty(name) || collectionType == null)
         {
             return null;
         }
 
         Type colType = null;
-        if (info.PropertyType.IsArray)
+        if (collectionType.IsArray)
         {
-            colType = info.PropertyType.GetElementType();
+            colType = collectionType.GetElementType();
         }
         else
         {
-            Type enumerableType = GenericObjectCache.FindGenericInterface(info.PropertyType, typeof(IEnumerable<>));
+            Type enumerableType = GenericObjectCache.FindGenericInterface(collectionType, typeof(IEnumerable<>));
             if (enumerableType != null)
             {
                 colType = enumerableType.GetGenericArguments()[0];
@@ -436,7 +469,7 @@ internal class CollectionGetter : PropertyGetter
         foreach (object obj in col)
         {
             object objectValue = obj;
-            string name = Convert.ToString(GetNextPropVal(obj, _nameFunc, index++));
+            string name = Convert.ToString(ResolveItemName(obj, index++));
             string val = _valueFunc == null ? FormatValue(obj) : GetValue(obj, _valueFunc, out objectValue);
 
             string desc = _descrFunc == null ? null : GetValue(obj, _descrFunc, out _);
@@ -467,6 +500,28 @@ internal class CollectionGetter : PropertyGetter
 
         string val = FormatEnumerable(col, _separator, _maxItems);
         bag.AddProperty(new Property(Name, val), PrependToCategory(catPrepend));
+    }
+
+    /// <summary>
+    ///     Resolves an item's display name, preferring a configured <c>IndexedNameFormatter</c> (it
+    ///     is documented to take precedence over the plain <c>NameFormatter</c>/<c>NameProperty</c>
+    ///     because it is the only option that can see the item's position).
+    /// </summary>
+    private object ResolveItemName(object obj, int index)
+    {
+        if (_indexedNameFormatter == null)
+        {
+            return GetNextPropVal(obj, _nameFunc, index);
+        }
+
+        try
+        {
+            return _indexedNameFormatter(obj, index);
+        }
+        catch (Exception ex)
+        {
+            return $"<{ex.Message}>";
+        }
     }
 
     private object GetNextPropVal(object obj, Func<object, object> propFunc, int index)

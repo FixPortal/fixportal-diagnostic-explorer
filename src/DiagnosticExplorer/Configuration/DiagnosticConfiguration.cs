@@ -401,6 +401,14 @@ internal sealed class DiagnosticConfigurationSnapshot
         return _defaultFormats.TryGetValue(type, out string formatString) ? formatString : null;
     }
 
+    // adversarial-review 20260912T091500Z, finding M4 declined here. Wrapping each provider
+    // invocation in a catch was tried and reverted: two tests in FluentConfigurationTests
+    // deliberately assert that a RegisterService misconfiguration -- no IServiceProvider given,
+    // or the provider missing the requested service -- surfaces as a thrown, actionable
+    // InvalidOperationException rather than becoming a diagnostics ExceptionMessage. That is a
+    // developer setup mistake meant to fail loudly, not the class of runtime host-provider fault
+    // the finding describes, and this method cannot tell the two apart today. Left as a design
+    // decision for whoever owns this contract.
     public IEnumerable<RegisteredObject> FindRegisteredObjects(IServiceProvider serviceProvider)
     {
         List<RegisteredObject> registeredObjects = [];

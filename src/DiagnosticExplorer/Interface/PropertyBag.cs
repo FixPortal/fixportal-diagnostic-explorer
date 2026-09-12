@@ -90,7 +90,10 @@ public class PropertyBag
         var cat = Categories.FindByName(category);
         if (cat == null)
         {
-            cat = new Category(category);
+            // Store the same normalized form FindByName compares against ("General" and blank
+            // both canonicalise to the unnamed default category) -- storing the raw name here
+            // made a stored "General" unfindable by its own name and duplicated on every call.
+            cat = new Category(CategoryExtensions.NormalizeName(category));
             Categories.Add(cat);
         }
 

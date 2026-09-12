@@ -80,6 +80,26 @@ public sealed class FluentConfigurationTests : IDisposable
     }
 
     /// <summary>
+    ///     adversarial-review 20260912T091500Z, H1: a delegate property that resolves to
+    ///     <see cref="PropertyStrategy.Collection" /> has no <c>PropertyInfo</c>, and
+    ///     <see cref="CollectionGetter" />'s constructor used to dereference it unconditionally --
+    ///     one such property blanked every property of the type on every render.
+    /// </summary>
+    [Fact]
+    public void Configure_ADelegateCollectionProperty_RendersACountInsteadOfThrowing()
+    {
+        DiagnosticManager.Configure(c =>
+        {
+            c.Configure<Widget>(t => t.Exclude(w => w.Tags));
+            c.Configure<Widget>(t => t.Property("Tag count", w => w.Tags));
+        });
+
+        Property tags = Render(new Widget()).Single(p => p.Name == "Tag count");
+
+        tags.Value.Should().Be("2");
+    }
+
+    /// <summary>
     ///     Getters are built once per type and bake the configuration in, so reconfiguring has to
     ///     invalidate the cache. Without that, a second configuration applies to types nothing has
     ///     touched yet and silently not to the rest.
@@ -293,6 +313,7 @@ public sealed class FluentConfigurationTests : IDisposable
     {
         public string Serial => "AB12";
         public DateTime Created => new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        public List<string> Tags => ["a", "b"];
     }
 
     private sealed class SingleServiceProvider : IServiceProvider

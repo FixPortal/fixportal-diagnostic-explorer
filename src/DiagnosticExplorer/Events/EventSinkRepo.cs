@@ -80,7 +80,14 @@ public sealed class EventSinkRepo : IDisposable
             _eventStreamLock.ExitWriteLock();
         }
 
-        _eventStreamLock.Dispose();
+        // ponytail: deliberately not disposing _eventStreamLock. Disposing it here, outside the
+        // lock it was just released from, raced RegisterEvent/CreateSinkStream: a thread that
+        // acquired the write lock the instant it was released could still be holding it when this
+        // ran, and ReaderWriterLockSlim.Dispose() throws SynchronizationLockException on a lock
+        // that is held or waited on. This type never uses the upgradeable-lock path, so the
+        // instance allocates no kernel wait handle to leak; every entry point already checks
+        // ThrowIfDisposed() under the same lock, so disposal is fully synchronized without ever
+        // tearing down the primitive itself.
     }
 
     public EventSink GetSink(string name, string category)
@@ -187,6 +194,7 @@ public sealed class EventSinkRepo : IDisposable
         _eventStreamLock.EnterWriteLock();
         try
         {
+            ThrowIfDisposed();
             if (!sink.AddAndPurge(evt, Volatile.Read(ref _eventRetention), _timeProvider.GetUtcNow().UtcDateTime))
             {
                 return;

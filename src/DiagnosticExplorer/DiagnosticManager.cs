@@ -5,9 +5,11 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -61,9 +63,13 @@ public static class DiagnosticManager
     ///     here directly. Threading the mode explicitly would mean putting it on every getter's
     ///     signature to serve one call at the bottom.
     ///     <para>
-    ///         <see cref="AsyncLocal{T}" /> rather than <c>ThreadStatic</c> because a getter may
-    ///         await. Set and restored around one bag, so concurrent renders on the thread pool
-    ///         cannot see each other's mode.
+    ///         <see cref="AsyncLocal{T}" /> rather than <c>ThreadStatic</c> so a render entered on
+    ///         one thread-pool thread keeps reading its own mode if that thread is later reused by
+    ///         an unrelated render, not because any getter here actually awaits — every
+    ///         <see cref="PropertyGetter.GetProperties" /> override is synchronous. If that ever
+    ///         changes, note that cycle/depth detection (<see cref="VisitedObjects" />) stays
+    ///         <c>[ThreadStatic]</c> deliberately (see its own remarks) and would need the same
+    ///         treatment to keep working across a resumption on a different thread.
     ///     </para>
     /// </remarks>
     private static readonly AsyncLocal<DiagnosticRenderMode?> _renderMode = new();
@@ -1573,6 +1579,15 @@ public static class DiagnosticManager
         {
             throw new ArgumentException($"{ident.BagCategory}|{ident.BagName} is not available for drilldown.");
         }
+
+        // Bag-level drilldown has no JSON-specific opt-in (unlike WithJsonHover() on a property),
+        // so CanDrillDown alone must never be read as JSON permission: that would serialise the
+        // bag's whole public object graph -- past [Browsable(false)]/Ignore/ExcludeAll -- to any
+        // caller who can reach ordinary drilldown. Fail closed until bag-level JSON opt-in exists.
+        if (access == DrillDownAccess.Json)
+        {
+            throw new ArgumentException($"{ident.BagCategory}|{ident.BagName} is not available for JSON view.");
+        }
         return new DrillDownTarget(bag.SourceObject, DrillDownMaxItems);
     }
 
@@ -1591,6 +1606,13 @@ public static class DiagnosticManager
         if (!cat.CanDrillDown || cat.DrillDownObject == null)
         {
             throw new ArgumentException($"Category {ident} is not available for drilldown.");
+        }
+
+        // Same fail-closed reasoning as GetBagTarget: Category has no JSON-specific opt-in, so
+        // ordinary drilldown permission must not also grant raw JSON serialization of the value.
+        if (access == DrillDownAccess.Json)
+        {
+            throw new ArgumentException($"Category {ident} is not available for JSON view.");
         }
         return new DrillDownTarget(cat.DrillDownObject, cat.DrillDownMaxItems);
     }
@@ -1714,6 +1736,13 @@ public static class DiagnosticManager
                 );
             }
 
+            if (getter.PropInfo == null)
+            {
+                return OperationResponse.Error(
+                    $"'{ident.PropCategory}'.'{ident.PropName}' doesn't have a source PropertyInfo!"
+                );
+            }
+
             bool isType = obj is Type;
             Type declaringType = getter.PropInfo.DeclaringType;
             if (!isType && (declaringType == null || !declaringType.IsInstanceOfType(obj)))
@@ -1825,23 +1854,56 @@ public static class DiagnosticManager
         }
     }
 
+    private static readonly JsonSerializerOptions _jsonHoverOptions = new()
+    {
+        WriteIndented = true,
+        ReferenceHandler = ReferenceHandler.IgnoreCycles,
+    };
+
+    /// <summary>
+    ///     Refused rather than cut: half a JSON document is not JSON, and a client parsing it would
+    ///     report a syntax error instead of the size. Serializes through a length-bounded stream
+    ///     so an unbounded or lazily-enumerated graph (an <see cref="IEnumerable{T}"/> backed by a
+    ///     query or generator) is stopped mid-write instead of first being fully materialized into a
+    ///     string and only then measured -- the ceiling is meant to protect the host process being
+    ///     diagnosed, not just the wire.
+    /// </summary>
     private static DrillDownResponse SerializeJsonHover(object value)
     {
-        string json = JsonSerializer.Serialize(
-            value,
-            new JsonSerializerOptions { WriteIndented = true, ReferenceHandler = ReferenceHandler.IgnoreCycles }
-        );
-
-        // Refused rather than cut: half a JSON document is not JSON, and a client parsing it would
-        // report a syntax error instead of the size.
-        return json.Length > MaxJsonHoverLength
-            ? new DrillDownResponse
+        using BoundedMemoryStream stream = new(MaxJsonHoverLength);
+        try
+        {
+            using Utf8JsonWriter writer = new(stream);
+            JsonSerializer.Serialize(writer, value, _jsonHoverOptions);
+        }
+        catch (JsonHoverLengthExceededException)
+        {
+            return new DrillDownResponse
             {
                 ErrorMessage =
-                    $"The value serialises to {json.Length:N0} characters, over the {MaxJsonHoverLength:N0} character limit for a JSON view.",
-            }
-            : new DrillDownResponse { Json = json };
+                    $"The value serialises to over the {MaxJsonHoverLength:N0} character limit for a JSON view.",
+            };
+        }
+
+        string json = Encoding.UTF8.GetString(stream.GetBuffer(), 0, (int)stream.Length);
+        return new DrillDownResponse { Json = json };
     }
+
+    /// <summary>A <see cref="MemoryStream" /> that fails fast once more than <paramref name="maxLength" /> bytes are written, instead of buffering an unbounded write.</summary>
+    private sealed class BoundedMemoryStream(int maxLength) : MemoryStream
+    {
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            if (Length + count > maxLength)
+            {
+                throw new JsonHoverLengthExceededException();
+            }
+            base.Write(buffer, offset, count);
+        }
+    }
+
+    /// <summary>Internal-use signal, not a fault a caller of this assembly needs to catch.</summary>
+    public sealed class JsonHoverLengthExceededException : Exception;
 
     /// <summary>
     ///     Collects the event tables the drilled-into objects define, merging by destination.
@@ -2075,7 +2137,14 @@ public static class DiagnosticManager
             return "0";
         }
 
-        int fence = IsDrillDownValue(item) ? RuntimeHelpers.GetHashCode(item) : item.GetHashCode();
+        // Reference identity only for an actual reference type. A drill-down-classified struct
+        // (e.g. KeyValuePair<TKey, TValue>) is re-boxed on every enumeration, so
+        // RuntimeHelpers.GetHashCode would mint a new fence for the same unchanged item on every
+        // re-render; its own value-based GetHashCode is stable across boxings instead.
+        int fence =
+            IsDrillDownValue(item) && !item.GetType().IsValueType
+                ? RuntimeHelpers.GetHashCode(item)
+                : item.GetHashCode();
         return fence.ToString("x8", CultureInfo.InvariantCulture);
     }
 

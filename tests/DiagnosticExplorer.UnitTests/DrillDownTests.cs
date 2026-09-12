@@ -242,6 +242,28 @@ public sealed class DrillDownTests : IDisposable
         response.ErrorMessage.Should().Contain("not available for drilldown");
     }
 
+    /// <summary>
+    ///     adversarial-review 20260912T091500Z, H2: <c>GetBagTarget</c> used to gate
+    ///     <see cref="DrillDownAccess.Json" /> on the same <c>CanDrillDown</c> check as ordinary
+    ///     inspection, so any bag reachable by drilldown had its whole public object graph
+    ///     JSON-serializable regardless of whether any property on it was ever opted into
+    ///     <c>WithJsonHover()</c> -- exactly the exposure <see cref="GetPropertyTarget" />'s
+    ///     separate <c>CanJsonHover</c> check exists to prevent one level up.
+    /// </summary>
+    [Fact]
+    public void GetDrillDown_AJsonHoverOnANestedBagOnlyOpenedForDrillDown_IsRefused()
+    {
+        DiagnosticManager.Configure(c => c.Configure<Host>(t => t.Property(h => h.Engine).WithDrillDown()));
+
+        DrillDownResponse response = DiagnosticManager.GetDrillDown(
+            Registered(new Host()),
+            new DrillDownRequest { ObjectPaths = ["Svc|Host||Engine", "DrillDown|Engine"], JsonHover = true }
+        );
+
+        response.Json.Should().BeNull();
+        response.ErrorMessage.Should().Contain("not available for JSON view");
+    }
+
     [Fact]
     public void GetDrillDown_AJsonHoverOnAPropertyConfiguredForIt_ReturnsTheSerializedValue()
     {

@@ -12,7 +12,7 @@
 
 **Testing approach:** TDD for logic-bearing work (Trace Scope tree renderer; any model-touching change). For pure styling/layout tasks, verification = `npm run build` (prod, clean) + `npm run lint` (clean) + a visual check (`npm start` → localhost:4200, or the visual companion), and all existing Jest tests stay green. Don't add unit tests that only assert CSS.
 
-**Per-task git:** the branch is `primeng-migration`. Commit at the end of each task. Run from `D:\fix-portal\diagnostic-explorer\diagnostics-web`.
+**Per-task git:** the branch is `primeng-migration`. Commit at the end of each task. Run from the repo's `diagnostics-web` directory.
 
 ---
 

@@ -17,9 +17,9 @@ For the current fluent configuration and logging adapters, see the
 has landed and the deliberate hosting differences from upstream.
 
 The project originated as Cameron Elliot's open-source diagnostic
-toolset around 2010 (LGPL v3+) and has been carried forward under
-Centerprise's EMS trading platform as the diagnostic backbone for the
-TOMI engine and its surrounding services.
+toolset around 2010 (LGPL v3+) and has been carried forward as the
+diagnostic backbone for a production EMS trading platform and its
+surrounding services.
 
 ## Repository layout
 

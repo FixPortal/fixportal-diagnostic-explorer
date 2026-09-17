@@ -10,7 +10,7 @@
 - `LogAnalyticsRetroLogger : IRetroLogger` — write via Logs Ingestion API, read via KQL, `Delete` throws `NotSupportedException`, `SupportsDelete => false`.
 - `IRetroLogger.SupportsDelete` capability flag added; `MongoRetroLogger` returns `true`.
 - `DiagServiceSettings`: `LogAnalytics` options + `"loganalytics"` factory case. `Config/settings.json` carries an empty `LogAnalytics` block (RetroType stays `mongo`).
-- `infra/retro-loganalytics.bicep` — authored for Centerprise (sub `64486c8f-…`, eastus2); compiles clean.
+- `infra/retro-loganalytics.bicep` — authored for the target tenant (eastus2); compiles clean.
 - Packages: `Azure.Identity`, `Azure.Monitor.Ingestion` 1.2.0, `Azure.Monitor.Query` 1.7.1.
 - Tests: `LogAnalyticsRetroLoggerTests` (12) green; full `DiagnosticService.UnitTests` suite 22/22 green; service builds.
 - **Remaining:** (1) deploy the Bicep + dedicated SP and run the live round-trip / truncation test; (2) surface `SupportsDelete` to the Angular client to hide the delete button under LA (today LA `Delete` just fails safe with an error toast).
@@ -192,7 +192,7 @@ case "loganalytics":
 
 > On a `feat/retro-log-analytics-backend` branch in a **feature worktree** of the FixPortal fork (not the reviewer-passes worktree). Read the Azure/CI and .NET-runtime trap notes first.
 
-1. [ ] Bicep: workspace + `DiagRetro_CL` custom table + DCE + DCR (stream schema per §8) + role assignments (Monitoring Metrics Publisher on DCR, Log Analytics Reader on workspace). **Full module in Appendix A — authored for the Centerprise tenant.**
+1. [ ] Bicep: workspace + `DiagRetro_CL` custom table + DCE + DCR (stream schema per §8) + role assignments (Monitoring Metrics Publisher on DCR, Log Analytics Reader on workspace). **Full module in Appendix A — authored for the target tenant.**
 2. [ ] Add NuGet: `Azure.Monitor.Ingestion`, `Azure.Monitor.Query`, `Azure.Identity` to `DiagnosticService`.
 3. [ ] Typed options class for the `LogAnalytics` config section; bind in `DiagServiceSettings`.
 4. [ ] `LogAnalyticsRetroLogger : IRetroLogger`:
@@ -215,9 +215,9 @@ Low-risk to land **because** the seam already exists and the local Mongo default
 
 ---
 
-## Appendix A — Bicep for the Centerprise tenant
+## Appendix A — Bicep for the target tenant
 
-Authored to match the existing Centerprise convention in `D:\Centerprise\work\ems-win-app\infra` (`backbone.bicep`): `targetScope = 'resourceGroup'`, `envName` (≤13, lowercase) + `location = resourceGroup().location`, workspace API `2023-09-01` / `PerGB2018` / 30-day retention, naming `log-<app>-<envName>`. This module uses `log-diag-<envName>` etc. for the diagnostics app.
+Authored to match the host platform's existing infrastructure convention: `targetScope = 'resourceGroup'`, `envName` (≤13, lowercase) + `location = resourceGroup().location`, workspace API `2023-09-01` / `PerGB2018` / 30-day retention, naming `log-<app>-<envName>`. This module uses `log-diag-<envName>` etc. for the diagnostics app.
 
 **Authoritative file:** `infra/retro-loganalytics.bicep` (committed on this branch; compiles clean). The block below is a reference copy — if they drift, the file wins.
 
@@ -359,13 +359,13 @@ output workspaceResourceId string = la.id
 ### Deploy
 
 ```powershell
-az deployment group create -g <centerprise-rg> -f infra/retro-loganalytics.bicep -p envName=exp diagServicePrincipalId=<diag-mi-object-id>
+az deployment group create -g <target-rg> -f infra/retro-loganalytics.bicep -p envName=exp diagServicePrincipalId=<diag-mi-object-id>
 ```
 
 Read the outputs back into `appsettings.LogAnalytics.json` (or ACA env / Key Vault):
 
 ```powershell
-az deployment group show -g <centerprise-rg> -n retro-loganalytics --query properties.outputs
+az deployment group show -g <target-rg> -n retro-loganalytics --query properties.outputs
 ```
 
 ### Prerequisites / traps (per `~/.claude/notes/deploy-and-ci-traps.md`)
@@ -373,5 +373,5 @@ az deployment group show -g <centerprise-rg> -n retro-loganalytics --query prope
 - **Deploying principal needs `Role Based Access Control Administrator`** (or User Access Administrator) on the RG — `Contributor` excludes `Microsoft.Authorization/roleAssignments/write`, so the two role assignments will 403 otherwise.
 - **Resource providers** `Microsoft.OperationalInsights` and `Microsoft.Insights` must be registered on the subscription (fresh subs have none).
 - **RBAC propagation lag ~30–60s** — the first ingest/query from the app may fail right after deploy; retry.
-- **Confirm with the operator before deploy:** target **resource group**, **`envName`**, and the **DiagnosticService identity object ID** (`diagServicePrincipalId`). These are the only tenant-specific values; everything else follows convention. I have NOT been given the live Centerprise RG/subscription — fill them at deploy time.
+- **Confirm with the operator before deploy:** target **resource group**, **`envName`**, and the **DiagnosticService identity object ID** (`diagServicePrincipalId`). These are the only tenant-specific values; everything else follows convention. The live RG/subscription are deliberately not recorded here — fill them at deploy time.
 - **Ingestion latency** (minutes) means the first round-trip test won't see records immediately (spec §6, §11).

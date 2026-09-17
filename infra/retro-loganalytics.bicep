@@ -1,4 +1,4 @@
-// Retro -> Log Analytics backend infrastructure (Centerprise tenant).
+// Retro -> Log Analytics backend infrastructure (target tenant).
 // Companion to docs/retro-log-analytics-backend-spec.md (Appendix A).
 //
 // Stands up a dedicated Log Analytics workspace + custom table + Data Collection
@@ -6,7 +6,7 @@
 // ingest + query roles. Deploy into a resource group; the DiagnosticService keeps
 // running locally (RetroType=mongo) until you flip it to RetroType=loganalytics.
 //
-// Convention mirrors D:\Centerprise\work\ems-win-app\infra\backbone.bicep
+// Convention mirrors the host platform's own infrastructure baseline
 // (log-<app>-<envName>, workspace API 2023-09-01, PerGB2018, eastus2 via RG location).
 
 targetScope = 'resourceGroup'

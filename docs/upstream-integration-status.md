@@ -62,8 +62,8 @@ from the legacy appender to the new realtime stream.
 Accepted 2026-09-08. Keep DiagnosticService and remote agents. Docker remains the
 published collector image; the existing ASP.NET Core collector also contains a
 Windows-service entry point. Reusing that collector on a Windows target does not
-require upstream SelfHost or a new installer. TOMIAPP01 uses native Windows hosting,
-so Docker must not be assumed for every EMS target.
+require upstream SelfHost or a new installer. Some EMS targets use native Windows
+hosting, so Docker must not be assumed for every one.
 The functional integration against upstream `f8dbb59` is complete for remote agents;
 hosting parity is not unfinished merge work or a release prerequisite.
 

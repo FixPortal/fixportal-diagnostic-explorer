@@ -123,6 +123,7 @@ public sealed class LogAnalyticsRetroLoggerIntegrationTests
         found.Process.Should().Be("la-it-process");
         found.User.Should().Be("la-it-user");
         found.Category.Should().Be("la-it-category");
+        found.Message.Should().Be($"la-integration-sentinel-{sentinel}");
         found.Date.Should().BeCloseTo(sentAt, TimeSpan.FromSeconds(1));
     }
 }

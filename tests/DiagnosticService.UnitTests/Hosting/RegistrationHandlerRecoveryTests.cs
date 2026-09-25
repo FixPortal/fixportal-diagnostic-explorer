@@ -97,6 +97,7 @@ public sealed class RegistrationHandlerRecoveryTests
         );
 
         completed.Should().Be(stopTask, "Stop() must complete promptly instead of hanging on a wedged retry loop");
+        await stopTask; // propagate a fault from Stop() rather than letting WhenAny's success mask it
 
         RealtimeManager manager = factory.Services.GetRequiredService<RealtimeManager>();
         manager.GetProcesses().Should().NotContain(p => p.InstanceId == registration.InstanceId);

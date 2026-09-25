@@ -152,24 +152,63 @@ public sealed class MongoRetroLoggerIntegrationTests
     }
 
     /// <summary>
-    ///     C1: a genuine (non-duplicate-key) write failure — here, a document over MongoDB's 16MB
-    ///     BSON limit — must propagate rather than being swallowed by the duplicate-key tolerance.
+    ///     C1: a genuine (non-duplicate-key) write failure must propagate rather than being
+    ///     swallowed by the duplicate-key tolerance in <see cref="MongoRetroLogger.WriteMessages" />.
+    ///     Forced with a temporary server-side <c>$jsonSchema</c> validator requiring a field the
+    ///     logger's mapped document never contains, so the server always rejects the write with a
+    ///     <see cref="MongoBulkWriteException{TDocument}" /> whose <c>WriteErrors</c> category is
+    ///     <see cref="ServerErrorCategory.Uncategorized" /> (DocumentValidationFailure) — not
+    ///     DuplicateKey. A too-large document is not used here: the driver rejects it client-side
+    ///     during BSON serialization before any request reaches the server, so it never reaches
+    ///     <see cref="MongoRetroLogger" />'s catch block at all and would not red-proof this path.
     /// </summary>
     [Fact]
     public async Task WriteMessages_NonDuplicateWriteFailure_Propagates()
     {
         var id = NewObjectId();
-        var oversized = NewMessage(id, level: 1, DateTime.UtcNow, message: new string('a', 17 * 1024 * 1024));
+        var msg = NewMessage(id, level: 1, DateTime.UtcNow);
         MongoRetroLogger logger = CreateLogger();
+        IMongoDatabase database = new MongoClient(ConnectionString).GetDatabase("Diagnostics");
+
+        await database.RunCommandAsync<BsonDocument>(
+            new BsonDocument
+            {
+                { "collMod", "Log" },
+                {
+                    "validator",
+                    new BsonDocument(
+                        "$jsonSchema",
+                        new BsonDocument
+                        {
+                            { "bsonType", "object" },
+                            {
+                                "required",
+                                new BsonArray { "FieldNoDocumentEverHas" }
+                            },
+                        }
+                    )
+                },
+                { "validationAction", "error" },
+            },
+            cancellationToken: TestContext.Current.CancellationToken
+        );
 
         try
         {
-            Func<Task> act = () => logger.WriteMessages([oversized], TestContext.Current.CancellationToken);
+            Func<Task> act = () => logger.WriteMessages([msg], TestContext.Current.CancellationToken);
 
-            await act.Should().ThrowAsync<Exception>("a non-duplicate-key write failure must not be swallowed");
+            var thrown = await act.Should()
+                .ThrowAsync<MongoBulkWriteException<DiagnosticMsg>>(
+                    "a non-duplicate-key write failure must not be swallowed"
+                );
+            thrown.Which.WriteErrors.Should().OnlyContain(e => e.Category != ServerErrorCategory.DuplicateKey);
         }
         finally
         {
+            await database.RunCommandAsync<BsonDocument>(
+                new BsonDocument { { "collMod", "Log" }, { "validator", new BsonDocument() } },
+                cancellationToken: TestContext.Current.CancellationToken
+            );
             await logger.Delete([id]);
         }
     }

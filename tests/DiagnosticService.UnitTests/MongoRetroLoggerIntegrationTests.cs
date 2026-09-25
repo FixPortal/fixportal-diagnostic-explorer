@@ -170,6 +170,21 @@ public sealed class MongoRetroLoggerIntegrationTests
         MongoRetroLogger logger = CreateLogger();
         IMongoDatabase database = new MongoClient(ConnectionString).GetDatabase("Diagnostics");
 
+        // collMod requires the collection to already exist -- on a fresh mongod (as CI's service
+        // container is) nothing has written to Log yet if this Fact happens to run first. Create
+        // it defensively; NamespaceExists (code 48) means a concurrent write beat us to it, which
+        // is fine. This is the only test in the suite that touches Diagnostics.Log with a schema
+        // validator (verified: no other test class opens this database), so there is no other
+        // test to race against for the validator window itself.
+        try
+        {
+            await database.CreateCollectionAsync("Log", cancellationToken: TestContext.Current.CancellationToken);
+        }
+        catch (MongoCommandException ex) when (ex.Code == 48)
+        {
+            // NamespaceExists -- already created by an earlier test in this run.
+        }
+
         await database.RunCommandAsync<BsonDocument>(
             new BsonDocument
             {

@@ -55,7 +55,7 @@ public sealed class BuildConfigurationTransformTests
                 .EnumerateArray()
                 .Select(url => url.GetString())
                 .Should()
-                .Contain(["http://*:2803", "http://*:6001"]);
+                .BeEquivalentTo("http://*:2803", "http://*:6001");
 
             diagnosticExplorer.GetProperty("Uri").GetString().Should().Be("http://localhost:6001/diagnostics");
         }
@@ -87,8 +87,13 @@ public sealed class BuildConfigurationTransformTests
         };
 
         using var process = Process.Start(startInfo)!;
-        var stdout = await process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
-        var stderr = await process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+        // Start both reads before awaiting either: if the build fills one redirected pipe while
+        // this only drains the other, the child process blocks writing to the full pipe and the
+        // whole thing deadlocks.
+        Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+        Task<string> stderrTask = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
         await process.WaitForExitAsync(TestContext.Current.CancellationToken);
 
         process

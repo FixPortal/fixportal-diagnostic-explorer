@@ -28,6 +28,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    # C1/C2: MongoRetroLogger integration tests need a real MongoDB to exercise insert,
+    # duplicate-key handling and query execution/ordering/limit/batching, which a mocked
+    # driver cannot prove. Exposed on the driver's default port so the tests need no
+    # connection-string wiring beyond what MongoRetroLoggerIntegrationTests already assumes
+    # for a local dev mongod.
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+
     steps:
       - uses: actions/checkout@v7
         with:

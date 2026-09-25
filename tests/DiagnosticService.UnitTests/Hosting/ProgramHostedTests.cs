@@ -471,7 +471,9 @@ public sealed class ProgramHostedTests
             .Build();
     }
 
-    private sealed class DiagnosticServiceFactory : WebApplicationFactory<Program>
+    // Internal rather than private: RegistrationHandlerRecoveryTests (D1) reuses it to host a
+    // real in-process SignalR server for injecting a transport failure via HttpMessageHandlerFactory.
+    internal sealed class DiagnosticServiceFactory : WebApplicationFactory<Program>
     {
         private readonly EnvironmentVariableScope[] _environment;
 

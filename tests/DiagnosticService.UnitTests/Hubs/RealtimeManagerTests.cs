@@ -7,6 +7,7 @@ using Diagnostic.Service.Hubs;
 using Diagnostic.Service.Transport;
 using DiagnosticExplorer;
 using DiagnosticExplorer.Logging;
+using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Xunit;
 
@@ -57,6 +58,56 @@ public sealed class RealtimeManagerTests
                 }
             );
         lateRegistration.Should().NotThrow();
+    }
+
+    /// <summary>
+    ///     A1: <see cref="RealtimeManager.RegisterAlertLevel" /> selects the highest recent
+    ///     message level for the process and publishes the change; once the alert duration
+    ///     elapses, <see cref="RealtimeManager.ProcessesAlertLevels" /> clears it and publishes
+    ///     again. Stale messages outside the window must not count toward the selected level.
+    /// </summary>
+    [Fact]
+    public void RegisterAlertLevel_SelectsHighestRecentLevel_AndProcessesAlertLevelsClearsAfterExpiry()
+    {
+        FakeTimeProvider timeProvider = new(new DateTimeOffset(2026, 9, 25, 10, 0, 0, TimeSpan.Zero));
+        RealtimeManager manager = new(timeProvider);
+        const string connectionId = "conn-1";
+        manager.Register(
+            new Registration
+            {
+                ProcessName = "test-process",
+                MachineName = "test-machine",
+                InstanceId = "test-instance",
+            },
+            connectionId
+        );
+        var processId = manager.GetProcesses().Single().Id;
+        List<DiagProcess> published = [];
+        using var subscription = manager.ProcessChanged.Subscribe(published.Add);
+
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        manager.RegisterAlertLevel(
+            connectionId,
+            [
+                new DiagnosticMsg { Level = 1, Date = now },
+                new DiagnosticMsg { Level = 3, Date = now }, // highest recent level
+                new DiagnosticMsg { Level = 5, Date = now.AddSeconds(-5) }, // outside the 2s alert window
+            ]
+        );
+
+        DiagProcess process = manager.GetProcesses().Single();
+        process.AlertLevel.Should().Be(3, "the stale level-5 message is outside the alert window");
+        process.AlertLevelDate.Should().Be(now);
+        published.Should().ContainSingle(p => p.Id == processId && p.AlertLevel == 3);
+
+        published.Clear();
+        timeProvider.Advance(TimeSpan.FromSeconds(3)); // past the 2s alert duration
+
+        manager.ProcessesAlertLevels();
+
+        process.AlertLevel.Should().Be(0, "the alert window has elapsed");
+        process.AlertLevelDate.Should().BeNull();
+        published.Should().ContainSingle(p => p.Id == processId && p.AlertLevel == 0);
     }
 
     [Fact]

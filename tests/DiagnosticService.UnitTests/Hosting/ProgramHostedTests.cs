@@ -361,7 +361,10 @@ public sealed class ProgramHostedTests
             BindingFlags.Instance | BindingFlags.NonPublic
         )!;
 
-        var deadline = DateTime.UtcNow.AddSeconds(30);
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken
+        );
+        deadline.CancelAfter(TimeSpan.FromSeconds(30));
         while (true)
         {
             if (getClientHandler.Invoke(manager, [connectionId]) is DiagnosticClientHandler handler)
@@ -369,8 +372,14 @@ public sealed class ProgramHostedTests
                 return handler;
             }
 
-            DateTime.UtcNow.Should().BeBefore(deadline, "the hub should register the agent's handler on connect");
-            await Task.Delay(TimeSpan.FromMilliseconds(10), TestContext.Current.CancellationToken);
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(10), deadline.Token);
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            {
+                throw new TimeoutException("the hub should register the agent's handler on connect");
+            }
         }
     }
 

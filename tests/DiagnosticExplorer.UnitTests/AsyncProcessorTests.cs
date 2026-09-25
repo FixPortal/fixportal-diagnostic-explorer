@@ -85,7 +85,22 @@ public class AsyncProcessorTests
         processor.Append(second); // fills the size-1 queue
         Action<LoggingEvent> append = processor.Append;
 
-        var blockedAppend = Task.Run(() => append(third), TestContext.Current.CancellationToken);
+        var appendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var blockedAppend = Task.Run(
+            () =>
+            {
+                appendStarted.TrySetResult();
+                append(third);
+            },
+            TestContext.Current.CancellationToken
+        );
+
+        // Wait for the append call to have actually started on its own thread — an unscheduled
+        // Task also reports IsCompleted == false, which proves nothing. Once appendStarted has
+        // fired, the very next statement on that thread is the blocking Add() against a
+        // capacity-one queue that is already full (second occupies its only slot), so the call
+        // is now genuinely inside the blocked path rather than merely not-yet-scheduled.
+        await appendStarted.Task.WaitAsync(GuardTimeout, TestContext.Current.CancellationToken);
 
         // Nothing can free queue space until the forward is released, so the Append
         // cannot have completed — Block mode is applying back-pressure.

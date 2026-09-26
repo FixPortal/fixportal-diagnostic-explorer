@@ -56,7 +56,10 @@
     "Directory.Build.props",
     "DiagnosticExplorer.slnx",
     ".github/workflows/ci.yml",
-    ".github/scripts/assert_gate_coverage.py"
+    ".github/scripts/assert_gate_coverage.py",
+    ".github/workflows/review-tier.yml",
+    "global.json",
+    ".config/dotnet-tools.json"
   ],
 
   "low": [

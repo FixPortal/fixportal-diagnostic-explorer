@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using AwesomeAssertions;
 using Diagnostic.Service.Common;
 using Diagnostic.Service.Transport;
@@ -7,6 +8,29 @@ using MongoDB.Driver;
 using Xunit;
 
 namespace DiagnosticService.UnitTests;
+
+/// <summary>
+///     Skips at discovery when <c>DIAG_SKIP_MONGO_INTEGRATION=1</c>. Stryker discovers the
+///     suite once and then runs that set for every mutant, so a skip inside the test body
+///     still pays the Mongo connection timeout on each mutant.
+/// </summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class SkipOnMutationLaneFactAttribute : FactAttribute
+{
+    public SkipOnMutationLaneFactAttribute(
+        [CallerFilePath] string sourceFilePath = "",
+        [CallerLineNumber] int sourceLineNumber = -1
+    )
+        : base(sourceFilePath, sourceLineNumber)
+    {
+        if (Environment.GetEnvironmentVariable("DIAG_SKIP_MONGO_INTEGRATION") == "1")
+        {
+            Skip =
+                "Skipped on the Stryker lane (DIAG_SKIP_MONGO_INTEGRATION=1). "
+                + "These tests run in the CI backend job, which provides MongoDB.";
+        }
+    }
+}
 
 /// <summary>
 ///     C1/C2: <see cref="MongoRetroLoggerTests" /> only covers validation that runs before any
@@ -20,28 +44,19 @@ namespace DiagnosticService.UnitTests;
 ///     them up via <see cref="MongoRetroLogger.Delete" /> so the suite does not depend on — or
 ///     pollute — a dedicated database. (C1, C2)
 ///     <para>
-///     The weekly Stryker lane sets <c>DIAG_SKIP_MONGO_INTEGRATION=1</c>. These tests skip
-///     there. That job has no MongoDB, and Stryker.NET 4.16 aborts the run when the initial
-///     pass reports any failure: its Microsoft.Testing.Platform adapter records a complete
-///     run as <c>EveryTest</c>, whose count is 0, so the failing-test ratio divides by zero.
-///     Running them once per mutant would also race on the shared <c>Diagnostics.Log</c>
-///     validator. The lane already spends most of an hour on these mutants.
+///     The weekly Stryker lane sets <c>DIAG_SKIP_MONGO_INTEGRATION=1</c>, and
+///     <see cref="SkipOnMutationLaneFactAttribute" /> skips these tests at discovery. That
+///     job has no MongoDB, and Stryker.NET 4.16 aborts the run when the initial pass reports
+///     any failure: its Microsoft.Testing.Platform adapter records a complete run as
+///     <c>EveryTest</c>, whose count is 0, so the failing-test ratio divides by zero.
+///     A skip inside the body would still run once per mutant. Five connection attempts at
+///     5 seconds, across the lane's 1004 mutants, is what pushed the 90-minute cap. They
+///     would also race on the shared <c>Diagnostics.Log</c> validator.
 ///     </para>
 /// </summary>
 public sealed class MongoRetroLoggerIntegrationTests
 {
     private const string ConnectionString = "mongodb://127.0.0.1:27017/?serverSelectionTimeoutMS=5000";
-
-    private static void SkipOnMutationLane()
-    {
-        if (Environment.GetEnvironmentVariable("DIAG_SKIP_MONGO_INTEGRATION") == "1")
-        {
-            Assert.Skip(
-                "Skipped on the Stryker lane (DIAG_SKIP_MONGO_INTEGRATION=1). "
-                    + "These tests run in the CI backend job, which provides MongoDB."
-            );
-        }
-    }
 
     private static MongoRetroLogger CreateLogger()
     {
@@ -87,10 +102,9 @@ public sealed class MongoRetroLoggerIntegrationTests
     ///     C1: a written message is stored with every field intact and readable back through the
     ///     real driver, not just accepted without error.
     /// </summary>
-    [Fact]
+    [SkipOnMutationLaneFact]
     public async Task WriteMessages_InsertsDocument_WithAllFieldsIntact()
     {
-        SkipOnMutationLane();
         var id = NewObjectId();
         var date = new DateTime(2026, 9, 25, 12, 0, 0, DateTimeKind.Utc);
         var msg = NewMessage(
@@ -133,10 +147,9 @@ public sealed class MongoRetroLoggerIntegrationTests
     ///     C1: a batch whose only write errors are duplicate-key must be tolerated as a no-op,
     ///     leaving the existing document untouched.
     /// </summary>
-    [Fact]
+    [SkipOnMutationLaneFact]
     public async Task WriteMessages_DuplicateKeyOnlyBatch_IsTolerated()
     {
-        SkipOnMutationLane();
         var id = NewObjectId();
         var date = new DateTime(2026, 9, 25, 12, 0, 0, DateTimeKind.Utc);
         var original = NewMessage(id, level: 1, date, message: "original");
@@ -183,10 +196,9 @@ public sealed class MongoRetroLoggerIntegrationTests
     ///     during BSON serialization before any request reaches the server, so it never reaches
     ///     <see cref="MongoRetroLogger" />'s catch block at all and would not red-proof this path.
     /// </summary>
-    [Fact]
+    [SkipOnMutationLaneFact]
     public async Task WriteMessages_NonDuplicateWriteFailure_Propagates()
     {
-        SkipOnMutationLane();
         var id = NewObjectId();
         var msg = NewMessage(id, level: 1, DateTime.UtcNow);
         MongoRetroLogger logger = CreateLogger();
@@ -251,10 +263,9 @@ public sealed class MongoRetroLoggerIntegrationTests
     }
 
     /// <summary>C1: an already-cancelled token must abort the write rather than silently insert.</summary>
-    [Fact]
+    [SkipOnMutationLaneFact]
     public async Task WriteMessages_WithCancelledToken_ThrowsOperationCanceled()
     {
-        SkipOnMutationLane();
         var id = NewObjectId();
         var msg = NewMessage(id, level: 1, DateTime.UtcNow);
         MongoRetroLogger logger = CreateLogger();
@@ -287,10 +298,9 @@ public sealed class MongoRetroLoggerIntegrationTests
     ///     C2: date/level filtering, descending sort, MaxRecords capping and full batch
     ///     enumeration, proven against real query execution rather than rendered filters.
     /// </summary>
-    [Fact]
+    [SkipOnMutationLaneFact]
     public async Task GetMessages_FiltersOrdersLimitsAndEnumeratesAllBatches()
     {
-        SkipOnMutationLane();
         var runTag = Guid.NewGuid().ToString("N");
         var windowStart = new DateTime(2026, 9, 25, 10, 0, 0, DateTimeKind.Utc);
         var windowEnd = new DateTime(2026, 9, 25, 11, 0, 0, DateTimeKind.Utc);

@@ -25,7 +25,7 @@ namespace DiagnosticService.UnitTests;
 ///     pass reports any failure: its Microsoft.Testing.Platform adapter records a complete
 ///     run as <c>EveryTest</c>, whose count is 0, so the failing-test ratio divides by zero.
 ///     Running them once per mutant would also race on the shared <c>Diagnostics.Log</c>
-///     validator and push the lane past its 60-minute limit.
+///     validator. The lane already spends most of an hour on these mutants.
 ///     </para>
 /// </summary>
 public sealed class MongoRetroLoggerIntegrationTests

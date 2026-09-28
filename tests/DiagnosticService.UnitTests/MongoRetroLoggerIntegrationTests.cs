@@ -50,8 +50,10 @@ public sealed class SkipOnMutationLaneFactAttribute : FactAttribute
 ///     any failure: its Microsoft.Testing.Platform adapter records a complete run as
 ///     <c>EveryTest</c>, whose count is 0, so the failing-test ratio divides by zero.
 ///     A skip inside the body would still run once per mutant. Five connection attempts at
-///     5 seconds, across the lane's 1004 mutants, is what pushed the 90-minute cap. They
-///     would also race on the shared <c>Diagnostics.Log</c> validator.
+///     5 seconds, across the lane's 1004 mutants (~105 minutes at concurrency 4), is what
+///     blew the 60-minute cap twice on 2026-09-27. With the skip at discovery the lane
+///     measures 81 minutes, which is what the 90-minute cap now covers. Skipping at
+///     discovery also avoids a race on the shared <c>Diagnostics.Log</c> validator.
 ///     </para>
 /// </summary>
 public sealed class MongoRetroLoggerIntegrationTests

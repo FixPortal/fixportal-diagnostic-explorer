@@ -33,15 +33,18 @@ jobs:
     # driver cannot prove. Exposed on the driver's default port so the tests need no
     # connection-string wiring beyond what MongoRetroLoggerIntegrationTests already assumes
     # for a local dev mongod.
-    # The image is the ECR Public mirror of the official mongo:7, digest kept identical —
-    # an anonymous Docker Hub service pull has timed out in this estate before (observatory
-    # PR #7) and the runner's built-in retry is the only retry for services. The health
+    # The image is Google's mirror.gcr.io pull-through cache of the official mongo:7, digest
+    # kept identical — an anonymous Docker Hub service pull has timed out in this estate
+    # before (observatory PR #7) and the runner's built-in retry is the only retry for
+    # services. Not ECR Public: its anonymous pulls are capped per source IP and shared
+    # GitHub-hosted runner IPs hit "toomanyrequests: Data limit exceeded" (run 36485942840,
+    # failed twice). The health
     # check mirrors Docker/compose-with-existing-image.yaml: the runner waits for mongod
     # to answer ping before any step runs, so Test does not rely on the earlier steps
     # happening to take long enough.
     services:
       mongo:
-        image: public.ecr.aws/docker/library/mongo:7@sha256:9854f7139445d766a9523571d6f047530c45547460ffcf8259eb2bf4264632ca
+        image: mirror.gcr.io/library/mongo:7@sha256:9854f7139445d766a9523571d6f047530c45547460ffcf8259eb2bf4264632ca
         ports:
           - 27017:27017
         options: >-

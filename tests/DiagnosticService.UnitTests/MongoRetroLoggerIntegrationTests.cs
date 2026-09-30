@@ -33,7 +33,7 @@ public sealed class SkipOnMutationLaneFactAttribute : FactAttribute
 }
 
 /// <summary>
-///     C1/C2: <see cref="MongoRetroLoggerTests" /> only covers validation that runs before any
+///     <see cref="MongoRetroLoggerTests" /> only covers validation that runs before any
 ///     driver call. These tests exercise the real driver against a real MongoDB instance — the
 ///     one the CI "backend" job runs as a service container on the driver's default port, and
 ///     the native mongod already running on this box locally (see the repo's
@@ -42,7 +42,7 @@ public sealed class SkipOnMutationLaneFactAttribute : FactAttribute
 ///     execution/ordering/limit/batching are proven against MongoDB itself, not a mocked filter
 ///     or FindOptions. Every test tags its own documents with a unique correlation id and cleans
 ///     them up via <see cref="MongoRetroLogger.Delete" /> so the suite does not depend on — or
-///     pollute — a dedicated database. (C1, C2)
+///     pollute — a dedicated database.
 ///     <para>
 ///     The weekly Stryker lane sets <c>DIAG_SKIP_MONGO_INTEGRATION=1</c>, and
 ///     <see cref="SkipOnMutationLaneFactAttribute" /> skips these tests at discovery. That

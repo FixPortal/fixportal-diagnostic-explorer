@@ -309,14 +309,14 @@ public sealed class MongoRetroLoggerIntegrationTests
 
         // Deliberately non-chronological insertion order, mixed levels, and records both inside
         // and outside the date range / below the level threshold.
-        (string Id, int Level, DateTime Date, bool ExpectedInResult)[] seeds =
+        (string Id, int Level, DateTime Date)[] seeds =
         [
-            (NewObjectId(), 5, windowStart.AddMinutes(30), true), // in-range, above threshold
-            (NewObjectId(), 5, windowStart.AddMinutes(10), true), // in-range, above threshold, earlier
-            (NewObjectId(), 5, windowStart.AddMinutes(50), true), // in-range, above threshold, latest
-            (NewObjectId(), 1, windowStart.AddMinutes(20), false), // in-range but below MinLevel
-            (NewObjectId(), 5, windowStart.AddMinutes(-10), false), // before the window
-            (NewObjectId(), 5, windowEnd.AddMinutes(10), false), // after the window (End is exclusive)
+            (NewObjectId(), 5, windowStart.AddMinutes(30)), // in-range, above threshold
+            (NewObjectId(), 5, windowStart.AddMinutes(10)), // in-range, above threshold, earlier
+            (NewObjectId(), 5, windowStart.AddMinutes(50)), // in-range, above threshold, latest
+            (NewObjectId(), 1, windowStart.AddMinutes(20)), // in-range but below MinLevel
+            (NewObjectId(), 5, windowStart.AddMinutes(-10)), // before the window
+            (NewObjectId(), 5, windowEnd.AddMinutes(10)), // after the window (End is exclusive)
         ];
 
         MongoRetroLogger logger = CreateLogger();

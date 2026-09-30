@@ -737,8 +737,7 @@ public partial class Form1 : Form, INotifyPropertyChanged
             {
                 using (new TraceScope(_timeProvider, "SYNC BLAH 2", null))
                 {
-                    var message =
-                        $"�$%�$%�$%�$%�$%�$%�$%�$%�$%�$% SCOPE TIMER {InvokeRequired} {_timeProvider.GetLocalNow():d MMM yyyy HH:mm:ss} �$%�$%�$%�$%�$%�$%�$%�$%�$%�$% ";
+                    var message = $"SCOPE TIMER {InvokeRequired} {_timeProvider.GetLocalNow():d MMM yyyy HH:mm:ss}";
                     TraceScope.Trace(message);
                 }
             });

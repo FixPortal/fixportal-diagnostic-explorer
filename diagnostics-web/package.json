@@ -31,7 +31,7 @@
     "@angular/forms": "^22.1.0",
     "@angular/platform-browser": "^22.1.0",
     "@angular/platform-browser-dynamic": "^22.1.0",
-    "@angular/router": "^22.1.0",
+    "@angular/router": "^22.2.0",
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/ibm-plex-sans": "^5.2.8",
     "@microsoft/signalr": "^6.0.25",

@@ -14,7 +14,7 @@ test "$(git -C "$output/source" rev-parse HEAD)" = "$revision"
 project="$output/source/src/Stryker.CLI/Stryker.CLI/Stryker.CLI.csproj"
 dotnet restore "$project" --locked-mode --source https://api.nuget.org/v3/index.json
 dotnet build "$project" -c Release --no-restore -o "$output/bin"
-python - "$output/bin/Stryker.CLI.deps.json" <<'PY'
+python3 - "$output/bin/Stryker.CLI.deps.json" <<'PY'
 import json
 import sys
 

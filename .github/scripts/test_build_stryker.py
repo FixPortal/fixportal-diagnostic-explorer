@@ -18,6 +18,7 @@ class BuildStrykerTests(unittest.TestCase):
             temp = Path(directory)
             tools = temp / "tools"
             tools.mkdir()
+            (tools / "python").write_text('#!/usr/bin/env bash\nexit 127\n', newline="\n")
             (tools / "git").write_text(
                 '#!/usr/bin/env bash\nset -eu\nprintf "git %s\\n" "$*" >> "$CALLS"\n'
                 '[[ "${FAIL:-}" != git ]] || exit 7\n'
@@ -73,6 +74,7 @@ class BuildStrykerTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/mutation.yml").read_text()
         self.assertIn('bash scripts/build-stryker.sh "$RUNNER_TEMP/stryker"', workflow)
         self.assertIn('dotnet "$RUNNER_TEMP/stryker/bin/Stryker.CLI.dll" --config-file stryker-config.json', workflow)
+        self.assertNotIn("dotnet tool restore", workflow)
         tools = json.loads((ROOT / ".config/dotnet-tools.json").read_text())["tools"]
         self.assertNotIn("dotnet-stryker", tools)
 

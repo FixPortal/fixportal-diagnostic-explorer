@@ -40,9 +40,6 @@ jobs:
         env:
           GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Tool restore
-        run: dotnet tool restore
-
       - name: Build patched Stryker
         run: bash scripts/build-stryker.sh "$RUNNER_TEMP/stryker"
 

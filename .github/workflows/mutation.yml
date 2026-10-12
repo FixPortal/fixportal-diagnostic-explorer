@@ -43,13 +43,16 @@ jobs:
       - name: Tool restore
         run: dotnet tool restore
 
+      - name: Build patched Stryker
+        run: bash scripts/build-stryker.sh "$RUNNER_TEMP/stryker"
+
       - name: Mutation tests
         working-directory: tests/DiagnosticService.UnitTests
-        run: dotnet stryker --config-file stryker-config.json
+        run: dotnet "$RUNNER_TEMP/stryker/bin/Stryker.CLI.dll" --config-file stryker-config.json
         env:
           # No Mongo service on this job. The integration tests skip when this is
           # set; they still run in the CI backend job, which has the service.
-          # Stryker 4.16 aborts if the initial pass reports any failure, and these
+          # Stryker aborts if the initial pass reports any failure, and these
           # tests must not run once per mutant against one shared database.
           DIAG_SKIP_MONGO_INTEGRATION: "1"
 

@@ -222,6 +222,18 @@ The .NET mutation lane uses Stryker 5's MTP per-test coverage selection. Stryker
 4.16's MTP runner ran the whole suite for each mutant even with `perTest` selected.
 Both mutation workflows retain their weekly schedule and manual dispatch.
 
+The published Stryker 5.0.0 tool bundles a vulnerable XML dependency. Until a
+patched release is available, CI builds upstream commit
+`1ae2b3c591a322d209cfdcd50bd2f10de20b8336` with its locked dependencies and verifies
+XML 10.0.12 before executing it ([upstream security fix](https://github.com/stryker-mutator/stryker-net/pull/3846)).
+For a local run, use Git Bash and a new output directory:
+
+```bash
+bash scripts/build-stryker.sh "$PWD/.claude/stryker-patched"
+cd tests/DiagnosticService.UnitTests
+DIAG_SKIP_MONGO_INTEGRATION=1 dotnet ../../.claude/stryker-patched/bin/Stryker.CLI.dll --config-file stryker-config.json
+```
+
 The shipped libraries have `<GeneratePackageOnBuild>true</GeneratePackageOnBuild>`,
 so a Release build produces the NuGet packages under each project's
 `bin/Release/`.

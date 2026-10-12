@@ -34,7 +34,7 @@ class WorkflowContractTests(unittest.TestCase):
         publish = job_block(self.lines, self.jobs, "build-and-push")
         self.assertFalse(any(line.startswith("    if:") for line in publish))
         self.assertFalse((ROOT / ".github/workflows/publish-docker-image.yml").exists())
-        self.assertIn("  cancel-in-progress: false\n", self.lines)
+        self.assertIn("  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/heads/main') && !startsWith(github.ref, 'refs/tags/') }}\n", self.lines)
 
     def test_web_mutation_partitions_preserve_the_configured_scope(self):
         workflow = (ROOT / ".github/workflows/mutation-web.yml").read_text()
@@ -59,16 +59,23 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertFalse(actual & files, partition)
             actual |= files
         self.assertEqual(expected, actual)
-        self.assertLessEqual(int(re.search(r"timeout-minutes: (\d+)", workflow).group(1)), 30)
+        timeouts = re.findall(r"timeout-minutes: (\d+)", workflow)
+        self.assertTrue(timeouts)
+        for timeout in timeouts:
+            self.assertLessEqual(int(timeout), 30)
 
     def test_dotnet_mutation_uses_covering_tests_within_the_execution_budget(self):
         workflow = (ROOT / ".github/workflows/mutation.yml").read_text()
-        self.assertLessEqual(int(re.search(r"timeout-minutes: (\d+)", workflow).group(1)), 30)
+        timeouts = re.findall(r"timeout-minutes: (\d+)", workflow)
+        self.assertTrue(timeouts)
+        for timeout in timeouts:
+            self.assertLessEqual(int(timeout), 30)
         config = json.loads((ROOT / "tests/DiagnosticService.UnitTests/stryker-config.json").read_text())["stryker-config"]
         self.assertEqual(config["coverage-analysis"], "perTest")
         self.assertEqual(config["test-runner"], "mtp")
         tools = json.loads((ROOT / ".config/dotnet-tools.json").read_text())["tools"]
-        self.assertGreaterEqual(int(tools["dotnet-stryker"]["version"].split(".")[0]), 5)
+        self.assertNotIn("dotnet-stryker", tools)
+        self.assertIn('bash scripts/build-stryker.sh "$RUNNER_TEMP/stryker"', workflow)
         self.assertEqual(config["mutate"], ["**/*.cs"])
 
 

@@ -213,8 +213,14 @@ npm run test:mutation
 Stryker writes its report to `diagnostics-web/reports/mutation/`.
 `scripts/summarize-stryker.ps1` condenses `mutation.json` into a compact
 JSON/Markdown summary, which the `mutation-web` GitHub Actions workflow posts to
-the run's job summary. The `publish-docker-image` workflow runs `npm ci`,
-`npm test`, and `npm run build` as a frontend gate before building the image.
+the run's job summary. Its ten parallel partitions retain the complete configured
+source scope and each has a 30-minute limit. The `ci` workflow runs frontend lint,
+tests and the production build as required inputs to `CI Gate`; image publication
+waits for that gate alongside the backend checks.
+
+The .NET mutation lane uses Stryker 5's MTP per-test coverage selection. Stryker
+4.16's MTP runner ran the whole suite for each mutant even with `perTest` selected.
+Both mutation workflows retain their weekly schedule and manual dispatch.
 
 The shipped libraries have `<GeneratePackageOnBuild>true</GeneratePackageOnBuild>`,
 so a Release build produces the NuGet packages under each project's
@@ -240,7 +246,7 @@ dotnet csharpier format .
 ## Container image
 
 Published to `ghcr.io/fixportal/diagnostic-explorer` by the GitHub
-Actions workflow at `.github/workflows/publish-docker-image.yml`.
+Actions workflow at `.github/workflows/ci.yml`, after `CI Gate` succeeds.
 
 Triggers:
 - `push` to `main` → tags `latest`, `main`, `sha-<short>`

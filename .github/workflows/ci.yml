@@ -6,7 +6,7 @@ on:
   # Regression signal: two runs with one head SHA, one push and one pull_request.
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ["v*.*.*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -15,12 +15,14 @@ permissions:
   contents: read
   packages: read
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/diagnostic-explorer
+
 concurrency:
   group: ci-${{ github.ref }}
-  # No deploy job to protect, so a newer commit should supersede an in-flight branch run —
-  # but never cancel a main or tag run (excluding only refs/heads/main let a re-pushed
-  # release tag cancel its own in-flight run; refs/tags/* must be excluded too).
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/heads/main') && !startsWith(github.ref, 'refs/tags/') }}
+  # A superseding run must not interrupt image publication.
+  cancel-in-progress: false
 
 jobs:
   backend:
@@ -67,15 +69,16 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Restore
-        run: |
-          dotnet tool restore
-          dotnet restore DiagnosticExplorer.slnx
-        env:
-          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore local tools
+        run: dotnet tool restore
 
       - name: Check C# formatting
         run: dotnet csharpier check .
+
+      - name: Restore
+        run: dotnet restore DiagnosticExplorer.slnx
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build
         run: dotnet build DiagnosticExplorer.slnx --configuration Release --no-restore
@@ -96,6 +99,32 @@ jobs:
           path: TestResults/*.trx
           if-no-files-found: ignore
 
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: diagnostics-web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Lint workflow
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+        with:
+          shellcheck: true
+      - uses: actions/setup-node@v7
+        with:
+          # Match the Docker image's Node major.
+          node-version: 22
+          cache: npm
+          cache-dependency-path: diagnostics-web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test -- --runInBand
+      - run: npm run build
+
   gate-coverage:
     name: Gate coverage
     runs-on: ubuntu-latest
@@ -107,13 +136,14 @@ jobs:
         with:
           persist-credentials: false
 
-      # Scoped to this file only -- mutation.yml and publish-docker-image.yml have no
-      # equivalent assertion, so an ungated job could be added to either of those without this
-      # check catching it. "Every job is gated" is a per-file guarantee here, not a repo-wide one.
+      # Image publication follows the gate; it cannot feed the gate it depends on.
       - name: Assert every job in this workflow is gated
         env:
-          GATE_EXEMPT: ''
+          GATE_EXEMPT: 'build-and-push'
         run: python3 .github/scripts/assert_gate_coverage.py .github/workflows/ci.yml
+
+      - name: Test repository workflow contracts
+        run: python3 -m unittest discover -s tests/workflows -v
 
       - name: Assert canonical asset copies match the committed manifest
         run: python3 .github/scripts/assert_canonical_assets.py
@@ -130,7 +160,7 @@ jobs:
   ci-gate:
     name: CI Gate
     if: always()
-    needs: [backend, gate-coverage]
+    needs: [backend, frontend, gate-coverage]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -142,3 +172,95 @@ jobs:
         run: |
           echo "Upstream results: $RESULTS"
           exit 1
+
+  build-and-push:
+    name: Publish Image (GHCR)
+    needs: [ci-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Lint workflow
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+        with:
+          shellcheck: true
+
+      # A ref gate on refs/tags/v* proves the ref's SHAPE, never that the commit was
+      # reviewed. `git push origin v1.2.3` puts the tag on whatever commit you name,
+      # including one that never opened a PR, and this job would then build and publish
+      # it to GHCR. Rulesets target branches; a branch ruleset does not constrain tags,
+      # and this repository has no tag-target ruleset. Assert reachability instead: it
+      # fails closed and is visible in the diff. Public repo, so the fetch needs no
+      # token even though checkout ran with persist-credentials: false.
+      # TAG PUSHES ONLY. This workflow also runs on pull_request and on push to main.
+      # On a pull_request GITHUB_SHA is the refs/pull/N/merge commit, which is by
+      # construction NOT an ancestor of main, so an ungated assertion would fail every
+      # PR in this repository. On a main push the check is redundant.
+      - name: Assert the tagged commit is reachable from main
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          # Full fetch of main, not --depth: the tag may name an older main commit, and a
+          # shallow fetch leaves merge-base no shared history to walk.
+          git fetch --no-tags origin main
+          # PEEL the ref first. For an ANNOTATED or signed tag, GITHUB_SHA is the tag
+          # OBJECT's sha, not a commit, and merge-base then fails with a confusing
+          # message rather than the intended one. `^{commit}` peels a tag object and is
+          # the identity for a plain commit sha, so this is correct either way.
+          tagged_commit="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          if ! git merge-base --is-ancestor "$tagged_commit" FETCH_HEAD; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' names a commit that is not reachable from main. Only reviewed, merged commits may be released."
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        # Blacksmith v2 caching requires a Blacksmith runner and persistent builder. This job is
+        # still on ubuntu-latest, so retain the GHA cache until a runner migration is benchmarked.
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase image name
+        id: image
+        run: echo "name=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Compute tags and labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Docker/Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          secrets: |
+            GITHUB_PACKAGES_TOKEN=${{ secrets.GITHUB_TOKEN }}

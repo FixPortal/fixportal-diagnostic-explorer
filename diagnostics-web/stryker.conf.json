@@ -7,6 +7,7 @@
   },
   "reporters": ["html", "json", "progress", "clear-text"],
   "coverageAnalysis": "perTest",
+  "concurrency": 2,
   "mutate": [
     "src/app/**/*.ts",
     "!src/app/**/*.spec.ts",

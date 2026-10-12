@@ -18,11 +18,7 @@ jobs:
   stryker:
     name: Stryker Mutation
     runs-on: ubuntu-latest
-    # Measured 2026-09-27: with the Mongo integration tests skipped at discovery the
-    # lane ran 81 minutes, so 90 is ~10% headroom. The old 60-minute cap cancelled two
-    # runs that still paid a per-mutant connection-attempt cost (see the skip note in
-    # MongoRetroLoggerIntegrationTests).
-    timeout-minutes: 90
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7
@@ -66,10 +62,8 @@ jobs:
           $report = Join-Path $latest.FullName 'reports/mutation-report.json'
           $jsonSummary = Join-Path $latest.FullName 'reports/mutation-summary.json'
           $mdSummary = Join-Path $latest.FullName 'reports/mutation-summary.md'
-          ./scripts/summarize-stryker.ps1 -ReportPath $report -JsonOutputPath $jsonSummary -MarkdownOutputPath $mdSummary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
-          # MongoRetroLogger mutants surface here as Survived (coverage-analysis: off);
-          # that code is covered by the CI backend job's integration suite instead.
-          'MongoRetroLogger survivors are excluded from this lane (DIAG_SKIP_MONGO_INTEGRATION=1) and covered by the CI backend integration tests.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          ./scripts/summarize-stryker.ps1 -ReportPath $report -JsonOutputPath $jsonSummary -MarkdownOutputPath $mdSummary -FailOnInconclusive | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          'Mongo integration tests are excluded from this lane (DIAG_SKIP_MONGO_INTEGRATION=1); their uncovered mutants remain visible as NoCoverage. The CI backend runs the integration tests.' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - uses: actions/upload-artifact@v7
         if: always()

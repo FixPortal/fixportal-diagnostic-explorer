@@ -14,11 +14,39 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: mutation-web-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   stryker-web:
-    name: Stryker Mutation (Web)
+    name: Stryker Mutation (Web - ${{ matrix.name }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: realtime
+            mutate: src/app/Model/RealtimeModel.ts
+          - name: retro
+            mutate: src/app/Model/RetroModel.ts
+          - name: log-stream
+            mutate: src/app/Model/LogStream.ts
+          - name: filters
+            mutate: src/app/Model/FilterCriteria.ts
+          - name: scopes
+            mutate: src/app/Model/ScopeNode.ts
+          - name: models
+            mutate: src/app/Model/**/*.ts,!src/app/Model/RealtimeModel.ts,!src/app/Model/RetroModel.ts,!src/app/Model/LogStream.ts,!src/app/Model/FilterCriteria.ts,!src/app/Model/ScopeNode.ts,!src/app/**/*.spec.ts
+          - name: services
+            mutate: src/app/services/**/*.ts,!src/app/**/*.spec.ts
+          - name: utilities
+            mutate: src/app/util/**/*.ts,src/app/pipes/**/*.ts,!src/app/**/*.spec.ts
+          - name: property-preview
+            mutate: src/app/property-preview/**/*.ts,!src/app/**/*.spec.ts
+          - name: components
+            mutate: src/app/**/*.ts,!src/app/Model/**/*.ts,!src/app/services/**/*.ts,!src/app/util/**/*.ts,!src/app/pipes/**/*.ts,!src/app/property-preview/**/*.ts,!src/app/**/*.spec.ts
     defaults:
       run:
         working-directory: diagnostics-web
@@ -44,7 +72,9 @@ jobs:
         run: npm test -- --runInBand
 
       - name: Mutation tests
-        run: npm run test:mutation
+        run: npm run test:mutation -- --mutate "$MUTATE"
+        env:
+          MUTATE: ${{ matrix.mutate }}
 
       - name: Summarize mutation report
         if: always()
@@ -53,12 +83,13 @@ jobs:
           ../scripts/summarize-stryker.ps1 `
             -ReportPath reports/mutation/mutation.json `
             -JsonOutputPath reports/mutation/mutation-summary.json `
-            -MarkdownOutputPath reports/mutation/mutation-summary.md |
+            -MarkdownOutputPath reports/mutation/mutation-summary.md `
+            -FailOnInconclusive |
             Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: mutation-web-report
+          name: mutation-web-report-${{ matrix.name }}
           path: diagnostics-web/reports/mutation/**
           if-no-files-found: error

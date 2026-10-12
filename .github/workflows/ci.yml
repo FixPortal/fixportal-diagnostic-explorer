@@ -21,8 +21,8 @@ env:
 
 concurrency:
   group: ci-${{ github.ref }}
-  # A superseding run must not interrupt image publication.
-  cancel-in-progress: false
+  # Supersede PRs while preserving main and tag publication runs.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/heads/main') && !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   backend:
@@ -143,7 +143,7 @@ jobs:
         run: python3 .github/scripts/assert_gate_coverage.py .github/workflows/ci.yml
 
       - name: Test repository workflow contracts
-        run: python3 .github/scripts/test_workflow_contract.py
+        run: python3 -S -m unittest discover -s .github/scripts -p 'test_*.py'
 
       - name: Assert canonical asset copies match the committed manifest
         run: python3 .github/scripts/assert_canonical_assets.py

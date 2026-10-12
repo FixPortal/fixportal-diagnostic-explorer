@@ -38,6 +38,7 @@
   "version": 1,
 
   "high": [
+    ".github/scripts/test_workflow_contract.py",
     ".github/canonical-assets.json",
     ".github/scripts/assert_canonical_assets.py",
     ".github/workflows/review-policy-guard.yml",

@@ -1,43 +1,44 @@
 """Repository-specific wiring alongside the canonical gate semantics checker."""
 from pathlib import Path
 import json
+import re
 import unittest
 
-import yaml
-
+from assert_gate_coverage import job_block, job_needs, read_gate_contract
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class WorkflowContractTests(unittest.TestCase):
     def setUp(self):
-        self.ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+        self.lines = (ROOT / ".github/workflows/ci.yml").read_text().splitlines(True)
+        self.jobs, self.needs, _ = read_gate_contract(self.lines, "ci-gate")
+        header = self.lines[self.jobs["ci-gate"]]
+        self.indent = len(header) - len(header.lstrip(" "))
 
     def test_formatter_precedes_package_restore(self):
-        commands = "\n".join(step.get("run", "") for step in self.ci["jobs"]["backend"]["steps"])
+        commands = "\n".join(job_block(self.lines, self.jobs, "backend"))
         self.assertLess(commands.index("dotnet tool restore"), commands.index("dotnet csharpier check ."))
         self.assertLess(commands.index("dotnet csharpier check ."), commands.index("dotnet restore DiagnosticExplorer.slnx"))
 
     def test_frontend_validation_blocks_the_gate(self):
-        jobs = self.ci["jobs"]
-        self.assertIn("frontend", jobs["ci-gate"]["needs"])
-        commands = "\n".join(step.get("run", "") for step in jobs["frontend"]["steps"])
+        self.assertIn("frontend", self.needs)
+        commands = "\n".join(job_block(self.lines, self.jobs, "frontend"))
         for command in ("npm ci", "npm run lint", "npm test", "npm run build"):
             with self.subTest(command=command):
                 self.assertIn(command, commands)
 
     def test_publication_waits_for_the_gate(self):
-        self.assertIn("build-and-push", self.ci["jobs"])
-        publish = self.ci["jobs"]["build-and-push"]
-        self.assertEqual(publish["needs"], ["ci-gate"])
-        self.assertNotIn("if", publish)
+        self.assertIn("build-and-push", self.jobs)
+        self.assertEqual(job_needs(self.lines, self.jobs, "build-and-push", self.indent), {"ci-gate"})
+        publish = job_block(self.lines, self.jobs, "build-and-push")
+        self.assertFalse(any(line.startswith("    if:") for line in publish))
         self.assertFalse((ROOT / ".github/workflows/publish-docker-image.yml").exists())
-        self.assertFalse(self.ci["concurrency"]["cancel-in-progress"])
+        self.assertIn("  cancel-in-progress: false\n", self.lines)
 
     def test_web_mutation_partitions_preserve_the_configured_scope(self):
-        workflow = yaml.safe_load((ROOT / ".github/workflows/mutation-web.yml").read_text())
-        job = workflow["jobs"]["stryker-web"]
-        self.assertIn("strategy", job, "the serial web workload exceeds its execution budget")
+        workflow = (ROOT / ".github/workflows/mutation-web.yml").read_text()
+        self.assertIn("      matrix:", workflow, "the serial web workload exceeds its execution budget")
         config = json.loads((ROOT / "diagnostics-web/stryker.conf.json").read_text())
         web = ROOT / "diagnostics-web"
 
@@ -50,17 +51,19 @@ class WorkflowContractTests(unittest.TestCase):
 
         expected = expand(config["mutate"])
         actual = set()
-        for partition in job["strategy"]["matrix"]["include"]:
-            files = expand(partition["mutate"].split(","))
-            self.assertTrue(files, partition["name"])
-            self.assertFalse(actual & files, partition["name"])
+        partitions = re.findall(r"^\s+mutate: (.+)$", workflow, re.MULTILINE)
+        self.assertTrue(partitions)
+        for partition in partitions:
+            files = expand(partition.split(","))
+            self.assertTrue(files, partition)
+            self.assertFalse(actual & files, partition)
             actual |= files
         self.assertEqual(expected, actual)
-        self.assertLessEqual(job["timeout-minutes"], 30)
+        self.assertLessEqual(int(re.search(r"timeout-minutes: (\d+)", workflow).group(1)), 30)
 
     def test_dotnet_mutation_uses_covering_tests_within_the_execution_budget(self):
-        workflow = yaml.safe_load((ROOT / ".github/workflows/mutation.yml").read_text())
-        self.assertLessEqual(workflow["jobs"]["stryker"]["timeout-minutes"], 30)
+        workflow = (ROOT / ".github/workflows/mutation.yml").read_text()
+        self.assertLessEqual(int(re.search(r"timeout-minutes: (\d+)", workflow).group(1)), 30)
         config = json.loads((ROOT / "tests/DiagnosticService.UnitTests/stryker-config.json").read_text())["stryker-config"]
         self.assertEqual(config["coverage-analysis"], "perTest")
         self.assertEqual(config["test-runner"], "mtp")

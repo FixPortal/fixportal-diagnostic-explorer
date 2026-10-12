@@ -143,7 +143,7 @@ jobs:
         run: python3 .github/scripts/assert_gate_coverage.py .github/workflows/ci.yml
 
       - name: Test repository workflow contracts
-        run: python3 -m unittest discover -s tests/workflows -v
+        run: python3 .github/scripts/test_workflow_contract.py
 
       - name: Assert canonical asset copies match the committed manifest
         run: python3 .github/scripts/assert_canonical_assets.py

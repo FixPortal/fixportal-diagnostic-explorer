@@ -297,11 +297,12 @@ public sealed class MongoRetroLoggerIntegrationTests
     }
 
     /// <summary>
-    ///     C2: date/level filtering, descending sort, MaxRecords capping and full batch
-    ///     enumeration, proven against real query execution rather than rendered filters.
+    ///     C2: date/level filtering, descending sort and MaxRecords capping, proven against real
+    ///     query execution rather than rendered filters. Filter edges and multi-batch enumeration
+    ///     are pinned by the two tests that follow the sort/limit one.
     /// </summary>
     [SkipOnMutationLaneFact]
-    public async Task GetMessages_FiltersOrdersLimitsAndEnumeratesAllBatches()
+    public async Task GetMessages_FiltersOrdersAndLimits()
     {
         var runTag = Guid.NewGuid().ToString("N");
         var windowStart = new DateTime(2026, 9, 25, 10, 0, 0, DateTimeKind.Utc);
@@ -364,6 +365,173 @@ public sealed class MongoRetroLoggerIntegrationTests
         finally
         {
             await logger.Delete(allIds);
+        }
+    }
+
+    private static async Task<(List<RetroMsg> Rows, int Batches)> ReadAll(
+        MongoRetroLogger logger,
+        RetroQuery query,
+        CancellationToken cancel
+    )
+    {
+        List<RetroMsg> rows = [];
+        var batches = 0;
+        await foreach (RetroMsg[] batch in logger.GetMessages(query, cancel).WithCancellation(cancel))
+        {
+            batches++;
+            rows.AddRange(batch);
+        }
+
+        return (rows, batches);
+    }
+
+    /// <summary>
+    ///     baseline:C2: the filter edges. MinLevel and StartDate are inclusive, EndDate is
+    ///     exclusive, and a MaxRecords larger than the qualifying count returns every qualifying
+    ///     row (and nothing outside the filters).
+    /// </summary>
+    [SkipOnMutationLaneFact]
+    public async Task GetMessages_FilterBoundaries_AreInclusiveStartAndMinLevel_ExclusiveEnd()
+    {
+        var runTag = Guid.NewGuid().ToString("N");
+        var start = new DateTime(2026, 9, 25, 10, 0, 0, DateTimeKind.Utc);
+        var end = new DateTime(2026, 9, 25, 11, 0, 0, DateTimeKind.Utc);
+        (string Id, int Level, DateTime Date, string Name)[] seeds =
+        [
+            (NewObjectId(), 2, start, "at-start-at-minlevel"), // both edges inclusive: returned
+            (NewObjectId(), 2, end.AddSeconds(-1), "just-before-end"), // returned
+            (NewObjectId(), 2, end, "at-end"), // End is exclusive
+            (NewObjectId(), 2, start.AddSeconds(-1), "just-before-start"), // before the window
+            (NewObjectId(), 1, start.AddMinutes(5), "below-minlevel"), // one under MinLevel
+        ];
+        MongoRetroLogger logger = CreateLogger();
+        var ids = seeds.Select(s => s.Id).ToArray();
+
+        try
+        {
+            await logger.WriteMessages(
+                [.. seeds.Select(s => NewMessage(s.Id, s.Level, s.Date, process: runTag, message: s.Name))],
+                TestContext.Current.CancellationToken
+            );
+
+            (List<RetroMsg> rows, _) = await ReadAll(
+                logger,
+                new RetroQuery
+                {
+                    SearchId = 1,
+                    MinLevel = 2,
+                    StartDate = start,
+                    EndDate = end,
+                    MaxRecords = 100,
+                    Process = runTag,
+                },
+                TestContext.Current.CancellationToken
+            );
+
+            rows.Select(r => r.Message)
+                .Should()
+                .Equal(
+                    ["just-before-end", "at-start-at-minlevel"],
+                    "newest first, and only the inclusive/exclusive edges"
+                );
+        }
+        finally
+        {
+            await logger.Delete(ids);
+        }
+    }
+
+    /// <summary>
+    ///     baseline:C2: more rows than the 250-row driver batch come back complete, across more
+    ///     than one batch, in newest-first order.
+    /// </summary>
+    [SkipOnMutationLaneFact]
+    public async Task GetMessages_MoreRowsThanOneBatch_AreAllEnumeratedAcrossBatches()
+    {
+        const int total = 300; // > BatchSize (250)
+        var runTag = Guid.NewGuid().ToString("N");
+        var start = new DateTime(2026, 9, 25, 10, 0, 0, DateTimeKind.Utc);
+        var seeds = Enumerable
+            .Range(0, total)
+            .Select(i => NewMessage(NewObjectId(), level: 3, start.AddSeconds(i), process: runTag))
+            .ToArray();
+        MongoRetroLogger logger = CreateLogger();
+
+        try
+        {
+            await logger.WriteMessages(seeds, TestContext.Current.CancellationToken);
+
+            (List<RetroMsg> rows, int batches) = await ReadAll(
+                logger,
+                new RetroQuery
+                {
+                    SearchId = 1,
+                    MinLevel = 0,
+                    StartDate = start,
+                    EndDate = start.AddHours(1),
+                    MaxRecords = 1000,
+                    Process = runTag,
+                },
+                TestContext.Current.CancellationToken
+            );
+
+            rows.Should().HaveCount(total);
+            rows.Select(r => r.MsgId).Should().OnlyHaveUniqueItems();
+            rows.Select(r => r.Date).Should().BeInDescendingOrder();
+            batches.Should().BeGreaterThan(1, "300 rows exceed the 250-row batch size");
+        }
+        finally
+        {
+            await logger.Delete(seeds.Select(m => m.MsgId).ToArray());
+        }
+    }
+
+    /// <summary>
+    ///     C7: <see cref="MongoRetroLogger.Delete" /> removes exactly the named records, skips a
+    ///     malformed id rather than throwing, reports the true count, and leaves unrelated rows.
+    /// </summary>
+    [SkipOnMutationLaneFact]
+    public async Task Delete_RemovesOnlyNamedRecords_SkipsMalformedIds_AndReportsCount()
+    {
+        var runTag = Guid.NewGuid().ToString("N");
+        var date = new DateTime(2026, 9, 25, 12, 0, 0, DateTimeKind.Utc);
+        var doomedA = NewObjectId();
+        var doomedB = NewObjectId();
+        var survivor = NewObjectId();
+        MongoRetroLogger logger = CreateLogger();
+
+        try
+        {
+            await logger.WriteMessages(
+                [
+                    NewMessage(doomedA, 1, date, process: runTag, message: "a"),
+                    NewMessage(doomedB, 1, date.AddSeconds(1), process: runTag, message: "b"),
+                    NewMessage(survivor, 1, date.AddSeconds(2), process: runTag, message: "survivor"),
+                ],
+                TestContext.Current.CancellationToken
+            );
+
+            var deleted = await logger.Delete([doomedA, "not-an-object-id", doomedB, NewObjectId()]);
+
+            deleted.Should().Be(2, "only the two existing, well-formed ids were removed");
+            (List<RetroMsg> rows, _) = await ReadAll(
+                logger,
+                new RetroQuery
+                {
+                    SearchId = 1,
+                    MinLevel = 0,
+                    StartDate = date.AddHours(-1),
+                    EndDate = date.AddHours(1),
+                    MaxRecords = 100,
+                    Process = runTag,
+                },
+                TestContext.Current.CancellationToken
+            );
+            rows.Select(r => r.Message).Should().Equal("survivor");
+        }
+        finally
+        {
+            await logger.Delete([doomedA, doomedB, survivor]);
         }
     }
 }

@@ -109,6 +109,90 @@ public sealed class WebHubJsonWireTests
             .Be("Online", "OnlineState must serialize as its string name, not the numeric 2");
     }
 
+    /// <summary>
+    ///     F3: the initial <c>SetProcesses</c> push a browser receives on connect is an array of
+    ///     <see cref="DiagProcess" /> whose fields the SPA reads by camelCase name
+    ///     (RealtimeModel.ts: <c>userName</c>, <c>machineName</c>, <c>processName</c>), with the
+    ///     enums as strings.
+    /// </summary>
+    [Fact]
+    public async Task SetProcesses_OnConnect_PushesCamelCaseProcessArrayWithStringEnums()
+    {
+        using ProgramHostedTests.DiagnosticServiceFactory factory = CreateFactory();
+        RealtimeManager manager = factory.Services.GetRequiredService<RealtimeManager>();
+        var processId = RegisterWireProcess(manager);
+
+        await using HubConnection connection = CreateWebConnection(factory);
+        TaskCompletionSource<JsonElement> pushed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = connection.On<JsonElement>("SetProcesses", element => pushed.TrySetResult(element));
+        await connection.StartAsync(TestContext.Current.CancellationToken);
+
+        JsonElement processes = await pushed.Task.WaitAsync(
+            TimeSpan.FromSeconds(30),
+            TestContext.Current.CancellationToken
+        );
+
+        processes.ValueKind.Should().Be(JsonValueKind.Array);
+        JsonElement process = processes.EnumerateArray().Single(p => p.GetProperty("id").GetString() == processId);
+        process.GetProperty("processName").GetString().Should().Be("wire-test-process");
+        process.GetProperty("machineName").GetString().Should().Be("wire-test-machine");
+        process.GetProperty("userName").GetString().Should().Be("wire-test-user");
+        process.GetProperty("state").GetString().Should().Be("Online");
+        process.GetProperty("registrationMode").GetString().Should().Be("Auto");
+    }
+
+    /// <summary>
+    ///     F3: removing a process pushes <c>RemoveProcess</c> carrying the bare process id string
+    ///     (not the process object).
+    /// </summary>
+    [Fact]
+    public async Task RemoveProcess_Push_CarriesTheBareProcessId()
+    {
+        using ProgramHostedTests.DiagnosticServiceFactory factory = CreateFactory();
+        RealtimeManager manager = factory.Services.GetRequiredService<RealtimeManager>();
+        var processId = RegisterWireProcess(manager);
+
+        await using HubConnection connection = CreateWebConnection(factory);
+        TaskCompletionSource<JsonElement> removed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = connection.On<JsonElement>("RemoveProcess", element => removed.TrySetResult(element));
+        await connection.StartAsync(TestContext.Current.CancellationToken);
+
+        manager.RemoveProcess(processId);
+
+        JsonElement payload = await removed.Task.WaitAsync(
+            TimeSpan.FromSeconds(30),
+            TestContext.Current.CancellationToken
+        );
+        payload.ValueKind.Should().Be(JsonValueKind.String);
+        payload.GetString().Should().Be(processId);
+    }
+
+    private static ProgramHostedTests.DiagnosticServiceFactory CreateFactory()
+    {
+        return new ProgramHostedTests.DiagnosticServiceFactory(
+            new Dictionary<string, string?>
+            {
+                ["DiagServiceSettings:UseSpaProxy"] = "false",
+                ["DiagServiceSettings:SpaDirectory"] = Path.GetTempPath(),
+                ["ASPNETCORE_ENVIRONMENT"] = "Development",
+            }
+        );
+    }
+
+    private static string RegisterWireProcess(RealtimeManager manager)
+    {
+        manager.Register(
+            new Registration
+            {
+                ProcessName = "wire-test-process",
+                MachineName = "wire-test-machine",
+                UserName = "wire-test-user",
+                InstanceId = "wire-test-instance",
+            }
+        );
+        return manager.GetProcesses().Single(p => p.InstanceId == "wire-test-instance").Id;
+    }
+
     // Mirrors what the browser client actually sends: TS DTO fields are camelCase by convention,
     // and enums are the string name (matching the server's own AddJsonProtocol configuration).
     // The server's PropertyNameCaseInsensitive=true would mask a naming mismatch if the client

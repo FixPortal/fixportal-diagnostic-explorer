@@ -110,6 +110,116 @@ public sealed class RealtimeManagerTests
         published.Should().ContainSingle(p => p.Id == processId && p.AlertLevel == 0);
     }
 
+    /// <summary>
+    ///     baseline:A1 negative control: inside the 2 s alert window, and at exactly 2 s (the expiry
+    ///     test is a strict <c>&gt;</c>), the level and date are retained and nothing is published.
+    ///     Only once the age passes 2 s does it clear.
+    /// </summary>
+    [Fact]
+    public void ProcessesAlertLevels_RetainsLevelInsideWindowAndAtBoundary_ClearsJustAfter()
+    {
+        (RealtimeManager manager, FakeTimeProvider timeProvider, List<DiagProcess> published) = AlertedManager(
+            out DateTime alertedAt
+        );
+        DiagProcess process = manager.GetProcesses().Single();
+        published.Clear();
+
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+        manager.ProcessesAlertLevels();
+        process.AlertLevel.Should().Be(3, "1 s is inside the 2 s window");
+        process.AlertLevelDate.Should().Be(alertedAt);
+        published.Should().BeEmpty();
+
+        timeProvider.Advance(TimeSpan.FromSeconds(1)); // age is exactly 2 s
+        manager.ProcessesAlertLevels();
+        process.AlertLevel.Should().Be(3, "expiry is strictly greater than the 2 s duration");
+        published.Should().BeEmpty();
+
+        timeProvider.Advance(TimeSpan.FromMilliseconds(1));
+        manager.ProcessesAlertLevels();
+        process.AlertLevel.Should().Be(0);
+        published.Should().ContainSingle(p => p.AlertLevel == 0);
+    }
+
+    /// <summary>
+    ///     A message exactly 2 s old is outside the window (the filter is a strict <c>&lt;</c>);
+    ///     one a millisecond younger is inside it.
+    /// </summary>
+    [Fact]
+    public void RegisterAlertLevel_MessageAgeBoundary_IsExclusiveOfTheWindowEdge()
+    {
+        FakeTimeProvider timeProvider = new(new DateTimeOffset(2026, 9, 25, 10, 0, 0, TimeSpan.Zero));
+        RealtimeManager manager = new(timeProvider);
+        RegisterWithConnection(manager);
+        DateTime now = timeProvider.GetUtcNow().UtcDateTime;
+
+        manager.RegisterAlertLevel("conn-1", [new DiagnosticMsg { Level = 4, Date = now.AddSeconds(-2) }]);
+        manager.GetProcesses().Single().AlertLevel.Should().Be(0, "a message exactly 2 s old is outside the window");
+
+        manager.RegisterAlertLevel(
+            "conn-1",
+            [new DiagnosticMsg { Level = 4, Date = now.AddSeconds(-2).AddMilliseconds(1) }]
+        );
+        manager.GetProcesses().Single().AlertLevel.Should().Be(4);
+    }
+
+    /// <summary>
+    ///     A2: a lower level never downgrades an alerted process (the date is not touched either);
+    ///     the same level refreshes the date without republishing; a higher level publishes.
+    /// </summary>
+    [Fact]
+    public void RegisterAlertLevel_LowerLevelIgnored_SameLevelRefreshesWithoutPublish_HigherPublishes()
+    {
+        (RealtimeManager manager, FakeTimeProvider timeProvider, List<DiagProcess> published) = AlertedManager(
+            out DateTime alertedAt
+        );
+        DiagProcess process = manager.GetProcesses().Single();
+
+        timeProvider.Advance(TimeSpan.FromMilliseconds(500));
+        DateTime later = timeProvider.GetUtcNow().UtcDateTime;
+        published.Clear();
+        manager.RegisterAlertLevel("conn-1", [new DiagnosticMsg { Level = 1, Date = later }]);
+        process.AlertLevel.Should().Be(3, "a lower level must not downgrade an alerted process");
+        process.AlertLevelDate.Should().Be(alertedAt, "an ignored lower level must not refresh the date");
+        published.Should().BeEmpty();
+
+        manager.RegisterAlertLevel("conn-1", [new DiagnosticMsg { Level = 3, Date = later }]);
+        process.AlertLevel.Should().Be(3);
+        process.AlertLevelDate.Should().Be(later, "the same level refreshes the decay timer");
+        published.Should().BeEmpty("an unchanged level is not republished");
+
+        manager.RegisterAlertLevel("conn-1", [new DiagnosticMsg { Level = 4, Date = later }]);
+        process.AlertLevel.Should().Be(4);
+        published.Should().ContainSingle(p => p.AlertLevel == 4);
+    }
+
+    private static (RealtimeManager Manager, FakeTimeProvider Time, List<DiagProcess> Published) AlertedManager(
+        out DateTime alertedAt
+    )
+    {
+        FakeTimeProvider timeProvider = new(new DateTimeOffset(2026, 9, 25, 10, 0, 0, TimeSpan.Zero));
+        RealtimeManager manager = new(timeProvider);
+        RegisterWithConnection(manager);
+        List<DiagProcess> published = [];
+        manager.ProcessChanged.Subscribe(published.Add);
+        alertedAt = timeProvider.GetUtcNow().UtcDateTime;
+        manager.RegisterAlertLevel("conn-1", [new DiagnosticMsg { Level = 3, Date = alertedAt }]);
+        return (manager, timeProvider, published);
+    }
+
+    private static void RegisterWithConnection(RealtimeManager manager)
+    {
+        manager.Register(
+            new Registration
+            {
+                ProcessName = "test-process",
+                MachineName = "test-machine",
+                InstanceId = "test-instance",
+            },
+            "conn-1"
+        );
+    }
+
     [Fact]
     public async Task SetProperty_ProcessNotFound_ReturnsErrorResponse()
     {

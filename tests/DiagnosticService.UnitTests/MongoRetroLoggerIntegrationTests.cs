@@ -206,42 +206,19 @@ public sealed class MongoRetroLoggerIntegrationTests
         MongoRetroLogger logger = CreateLogger();
         IMongoDatabase database = new MongoClient(ConnectionString).GetDatabase("Diagnostics");
 
-        // collMod requires the collection to already exist -- on a fresh mongod (as CI's service
-        // container is) nothing has written to Log yet if this Fact happens to run first. Create
-        // it defensively; NamespaceExists (code 48) means a concurrent write beat us to it, which
-        // is fine. This is the only test in the suite that touches Diagnostics.Log with a schema
-        // validator (verified: no other test class opens this database), so there is no other
-        // test to race against for the validator window itself.
-        try
-        {
-            await database.CreateCollectionAsync("Log", cancellationToken: TestContext.Current.CancellationToken);
-        }
-        catch (MongoCommandException ex) when (ex.Code == 48)
-        {
-            // NamespaceExists -- already created by an earlier test in this run.
-        }
-
-        await database.RunCommandAsync<BsonDocument>(
-            new BsonDocument
-            {
-                { "collMod", "Log" },
+        await using var validator = await ValidatorScope.InstallAsync(
+            database,
+            new BsonDocument(
+                "$jsonSchema",
+                new BsonDocument
                 {
-                    "validator",
-                    new BsonDocument(
-                        "$jsonSchema",
-                        new BsonDocument
-                        {
-                            { "bsonType", "object" },
-                            {
-                                "required",
-                                new BsonArray { "FieldNoDocumentEverHas" }
-                            },
-                        }
-                    )
-                },
-                { "validationAction", "error" },
-            },
-            cancellationToken: TestContext.Current.CancellationToken
+                    { "bsonType", "object" },
+                    {
+                        "required",
+                        new BsonArray { "FieldNoDocumentEverHas" }
+                    },
+                }
+            )
         );
 
         try
@@ -256,11 +233,181 @@ public sealed class MongoRetroLoggerIntegrationTests
         }
         finally
         {
+            await logger.Delete([id]);
+        }
+    }
+
+    /// <summary>
+    ///     C1: the insert is unordered, so a duplicate that comes FIRST must not stop the valid
+    ///     document behind it from being stored. With an ordered insert the batch halts at the
+    ///     duplicate and the second document is lost while the duplicate-only tolerance still
+    ///     reports success. Every earlier write test submitted one document, so neither the
+    ///     ordering nor the position of the duplicate was exercised.
+    /// </summary>
+    [SkipOnMutationLaneFact]
+    public async Task WriteMessages_DuplicateFirstInABatch_StillStoresTheValidDocumentBehindIt()
+    {
+        var existingId = NewObjectId();
+        var freshId = NewObjectId();
+        var date = new DateTime(2026, 9, 25, 12, 0, 0, DateTimeKind.Utc);
+        MongoRetroLogger logger = CreateLogger();
+
+        try
+        {
+            await logger.WriteMessages(
+                [NewMessage(existingId, level: 1, date, message: "original")],
+                TestContext.Current.CancellationToken
+            );
+
+            await logger.WriteMessages(
+                [
+                    NewMessage(existingId, level: 9, date, message: "duplicate"),
+                    NewMessage(freshId, level: 2, date, message: "fresh"),
+                ],
+                TestContext.Current.CancellationToken
+            );
+
+            var fresh = await GetRawCollection()
+                .Find(Builders<RetroMsg>.Filter.Eq(m => m.RecordId, ObjectId.Parse(freshId)))
+                .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+            fresh.Should().NotBeNull("the valid document behind a duplicate must still be inserted");
+            fresh.Message.Should().Be("fresh");
+        }
+        finally
+        {
+            await logger.Delete([existingId, freshId]);
+        }
+    }
+
+    /// <summary>
+    ///     C1: a batch whose write errors are a duplicate key AND a genuine failure must surface
+    ///     the failure. Tolerating a batch when ANY error is a duplicate, instead of when ALL
+    ///     are, would swallow the rejected document. The genuine failure is forced with a
+    ///     query-expression validator that rejects one message by text and still passes the
+    ///     duplicate document, so the server reports one DuplicateKey error and one validation
+    ///     failure in the same batch; a duplicate plus a valid document cannot tell the two
+    ///     predicates apart.
+    /// </summary>
+    [SkipOnMutationLaneFact]
+    public async Task WriteMessages_DuplicatePlusRejectedDocument_Propagates()
+    {
+        var existingId = NewObjectId();
+        var rejectedId = NewObjectId();
+        var date = new DateTime(2026, 9, 25, 12, 0, 0, DateTimeKind.Utc);
+        MongoRetroLogger logger = CreateLogger();
+        IMongoDatabase database = new MongoClient(ConnectionString).GetDatabase("Diagnostics");
+
+        await using var validator = await ValidatorScope.InstallAsync(
+            database,
+            new BsonDocument("Message", new BsonDocument("$ne", "reject-me"))
+        );
+
+        try
+        {
+            await logger.WriteMessages(
+                [NewMessage(existingId, level: 1, date, message: "original")],
+                TestContext.Current.CancellationToken
+            );
+
+            Func<Task> act = () =>
+                logger.WriteMessages(
+                    [
+                        NewMessage(existingId, level: 9, date, message: "duplicate"),
+                        NewMessage(rejectedId, level: 2, date, message: "reject-me"),
+                    ],
+                    TestContext.Current.CancellationToken
+                );
+
+            var thrown = await act.Should()
+                .ThrowAsync<MongoBulkWriteException<DiagnosticMsg>>(
+                    "a batch holding a non-duplicate failure must not be tolerated because one error is a duplicate"
+                );
+            thrown
+                .Which.WriteErrors.Select(e => e.Category)
+                .Should()
+                .Contain(ServerErrorCategory.DuplicateKey)
+                .And.Contain(c => c != ServerErrorCategory.DuplicateKey);
+        }
+        finally
+        {
+            await logger.Delete([existingId, rejectedId]);
+        }
+    }
+
+    /// <summary>C1: the environment a message was logged from is stored, not just accepted.</summary>
+    [SkipOnMutationLaneFact]
+    public async Task WriteMessages_StoresTheEnvironment()
+    {
+        var id = NewObjectId();
+        MongoRetroLogger logger = CreateLogger();
+
+        try
+        {
+            await logger.WriteMessages(
+                [NewMessage(id, level: 1, new DateTime(2026, 9, 25, 12, 0, 0, DateTimeKind.Utc))],
+                TestContext.Current.CancellationToken
+            );
+
+            var stored = await new MongoClient(ConnectionString)
+                .GetDatabase("Diagnostics")
+                .GetCollection<BsonDocument>("Log")
+                .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(id)))
+                .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+            stored.Should().NotBeNull();
+            stored["Environment"].AsString.Should().Be("test-env");
+        }
+        finally
+        {
+            await logger.Delete([id]);
+        }
+    }
+
+    /// <summary>
+    ///     Installs a server-side validator on the shared <c>Diagnostics.Log</c> collection and
+    ///     clears it on dispose. collMod needs the collection to exist, and on a fresh mongod (as
+    ///     CI's service container is) nothing has written to it yet if the calling test runs
+    ///     first, so it is created defensively; NamespaceExists (code 48) means a concurrent
+    ///     write beat us to it, which is fine. Only tests that use this scope touch the
+    ///     validator, and a class's tests run sequentially, so there is no race for the window.
+    /// </summary>
+    private sealed class ValidatorScope : IAsyncDisposable
+    {
+        private readonly IMongoDatabase _database;
+
+        private ValidatorScope(IMongoDatabase database)
+        {
+            _database = database;
+        }
+
+        internal static async Task<ValidatorScope> InstallAsync(IMongoDatabase database, BsonDocument validator)
+        {
+            try
+            {
+                await database.CreateCollectionAsync("Log", cancellationToken: TestContext.Current.CancellationToken);
+            }
+            catch (MongoCommandException ex) when (ex.Code == 48)
+            {
+                // NamespaceExists: already created by an earlier test in this run.
+            }
+
             await database.RunCommandAsync<BsonDocument>(
+                new BsonDocument
+                {
+                    { "collMod", "Log" },
+                    { "validator", validator },
+                    { "validationAction", "error" },
+                },
+                cancellationToken: TestContext.Current.CancellationToken
+            );
+            return new ValidatorScope(database);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await _database.RunCommandAsync<BsonDocument>(
                 new BsonDocument { { "collMod", "Log" }, { "validator", new BsonDocument() } },
                 cancellationToken: TestContext.Current.CancellationToken
             );
-            await logger.Delete([id]);
         }
     }
 

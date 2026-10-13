@@ -45,6 +45,8 @@ public class MongoRetroLogger : IRetroLogger
     private static readonly TimeSpan QueryMaxTime = TimeSpan.FromSeconds(30);
 
     private readonly Lazy<MongoClient> _client;
+    private readonly string _databaseName;
+    private readonly string _collectionName;
 
     static MongoRetroLogger()
     {
@@ -79,9 +81,14 @@ public class MongoRetroLogger : IRetroLogger
         BsonClassMap.RegisterClassMap(map3);
     }
 
-    public MongoRetroLogger(string connectionString)
+    /// <param name="connectionString">MongoDB connection string.</param>
+    /// <param name="databaseName">Database holding the log. Production uses the default; tests pass their own so they never touch it.</param>
+    /// <param name="collectionName">Collection holding the log. Production uses the default.</param>
+    public MongoRetroLogger(string connectionString, string databaseName = "Diagnostics", string collectionName = "Log")
     {
         ConnectionString = connectionString;
+        _databaseName = databaseName;
+        _collectionName = collectionName;
         // MongoClient is meant to be a long-lived singleton (it owns a connection pool and
         // topology-monitoring threads); cache one and reuse it across all operations rather than
         // constructing a fresh one per call.
@@ -226,7 +233,7 @@ public class MongoRetroLogger : IRetroLogger
 
     private IMongoCollection<T> GetLogCollection<T>()
     {
-        return _client.Value.GetDatabase("Diagnostics").GetCollection<T>("Log");
+        return _client.Value.GetDatabase(_databaseName).GetCollection<T>(_collectionName);
     }
 
     private async Task EnsureIndexesAsync()
@@ -239,13 +246,13 @@ public class MongoRetroLogger : IRetroLogger
                 new CreateIndexOptions { Name = "Date_-1" }
             );
             await collection.Indexes.CreateOneAsync(dateIndex).ConfigureAwait(false);
-            _log.Info("Ensured Diagnostics.Log Date index for retro queries");
+            _log.InfoFormat("Ensured {0}.{1} Date index for retro queries", _databaseName, _collectionName);
         }
         catch (Exception ex)
         {
             // Never let index maintenance break logging/queries; the feature still functions
             // (just unindexed) and a later restart will retry.
-            _log.Warn("Failed to ensure Diagnostics.Log Date index", ex);
+            _log.Warn(string.Concat("Failed to ensure ", _databaseName, ".", _collectionName, " Date index"), ex);
         }
     }
 

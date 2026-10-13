@@ -42,7 +42,7 @@ public sealed class SkipOnMutationLaneFactAttribute : FactAttribute
 ///     execution/ordering/limit/batching are proven against MongoDB itself, not a mocked filter
 ///     or FindOptions. Every test tags its own documents with a unique correlation id and cleans
 ///     them up via <see cref="MongoRetroLogger.Delete" /> so the suite does not depend on — or
-///     pollute — a dedicated database.
+///     pollute — the data in it. All of it runs in a throwaway database named by <c>TestDatabaseNames</c>,\r\n    ///     never in the real <c>Diagnostics</c> database.
 ///     <para>
 ///     The weekly Stryker lane sets <c>DIAG_SKIP_MONGO_INTEGRATION=1</c>, and
 ///     <see cref="SkipOnMutationLaneFactAttribute" /> skips these tests at discovery. That
@@ -53,21 +53,34 @@ public sealed class SkipOnMutationLaneFactAttribute : FactAttribute
 ///     5 seconds, across the lane's 1004 mutants (~105 minutes at concurrency 4), is what
 ///     blew the 60-minute cap twice on 2026-09-27. With the skip at discovery the lane
 ///     measures 81 minutes, which is what the 90-minute cap now covers. Skipping at
-///     discovery also avoids a race on the shared <c>Diagnostics.Log</c> validator.
+///     discovery also avoids a race on the shared <c>Log</c> validator.
 ///     </para>
 /// </summary>
-public sealed class MongoRetroLoggerIntegrationTests
+public sealed class MongoRetroLoggerIntegrationTests : IClassFixture<MongoRetroLoggerIntegrationTests.DatabaseFixture>
 {
     private const string ConnectionString = "mongodb://127.0.0.1:27017/?serverSelectionTimeoutMS=5000";
 
+    // One throwaway database for the whole class: these tests install collection validators and
+    // the mutation lane rewrites delete filters, neither of which may reach a real Diagnostics.Log.
+    private static readonly string DatabaseName = TestDatabaseNames.New();
+
+    /// <summary>Drops the class's throwaway database once every test in it has run.</summary>
+    public sealed class DatabaseFixture : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            await TestDatabaseNames.DropAsync(new MongoClient(ConnectionString), DatabaseName, CancellationToken.None);
+        }
+    }
+
     private static MongoRetroLogger CreateLogger()
     {
-        return new MongoRetroLogger(ConnectionString);
+        return new MongoRetroLogger(ConnectionString, DatabaseName);
     }
 
     private static IMongoCollection<RetroMsg> GetRawCollection()
     {
-        return new MongoClient(ConnectionString).GetDatabase("Diagnostics").GetCollection<RetroMsg>("Log");
+        return new MongoClient(ConnectionString).GetDatabase(DatabaseName).GetCollection<RetroMsg>("Log");
     }
 
     private static string NewObjectId()
@@ -204,7 +217,7 @@ public sealed class MongoRetroLoggerIntegrationTests
         var id = NewObjectId();
         var msg = NewMessage(id, level: 1, DateTime.UtcNow);
         MongoRetroLogger logger = CreateLogger();
-        IMongoDatabase database = new MongoClient(ConnectionString).GetDatabase("Diagnostics");
+        IMongoDatabase database = new MongoClient(ConnectionString).GetDatabase(DatabaseName);
 
         await using var validator = await ValidatorScope.InstallAsync(
             database,
@@ -295,7 +308,7 @@ public sealed class MongoRetroLoggerIntegrationTests
         var rejectedId = NewObjectId();
         var date = new DateTime(2026, 9, 25, 12, 0, 0, DateTimeKind.Utc);
         MongoRetroLogger logger = CreateLogger();
-        IMongoDatabase database = new MongoClient(ConnectionString).GetDatabase("Diagnostics");
+        IMongoDatabase database = new MongoClient(ConnectionString).GetDatabase(DatabaseName);
 
         await using var validator = await ValidatorScope.InstallAsync(
             database,
@@ -349,7 +362,7 @@ public sealed class MongoRetroLoggerIntegrationTests
             );
 
             var stored = await new MongoClient(ConnectionString)
-                .GetDatabase("Diagnostics")
+                .GetDatabase(DatabaseName)
                 .GetCollection<BsonDocument>("Log")
                 .Find(Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(id)))
                 .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
@@ -359,6 +372,71 @@ public sealed class MongoRetroLoggerIntegrationTests
         finally
         {
             await logger.Delete([id]);
+        }
+    }
+
+    /// <summary>
+    ///     A logger given its own database and collection writes there and nowhere else, which is
+    ///     what lets every other test in this class run (including the ones that install a
+    ///     validator or delete without a narrow filter) without touching <c>Diagnostics.Log</c>.
+    /// </summary>
+    [SkipOnMutationLaneFact]
+    public async Task WriteMessages_UsesTheConfiguredDatabaseAndCollection()
+    {
+        var id = NewObjectId();
+        var databaseName = TestDatabaseNames.New();
+        var client = new MongoClient(ConnectionString);
+        MongoRetroLogger logger = new(ConnectionString, databaseName, "IsolatedLog");
+
+        try
+        {
+            await logger.WriteMessages(
+                [NewMessage(id, level: 1, new DateTime(2026, 9, 25, 12, 0, 0, DateTimeKind.Utc))],
+                TestContext.Current.CancellationToken
+            );
+
+            var filter = Builders<BsonDocument>.Filter.Eq("_id", ObjectId.Parse(id));
+            var isolated = await client
+                .GetDatabase(databaseName)
+                .GetCollection<BsonDocument>("IsolatedLog")
+                .CountDocumentsAsync(filter, cancellationToken: TestContext.Current.CancellationToken);
+            var shared = await client
+                .GetDatabase("Diagnostics")
+                .GetCollection<BsonDocument>("Log")
+                .CountDocumentsAsync(filter, cancellationToken: TestContext.Current.CancellationToken);
+
+            isolated.Should().Be(1, "the message belongs in the collection the logger was configured with");
+            shared.Should().Be(0, "a configured logger must never write to the production Diagnostics.Log");
+        }
+        finally
+        {
+            await TestDatabaseNames.DropAsync(client, databaseName, CancellationToken.None);
+            // Only reached with a row in the shared collection if the assertion above has failed.
+            await new MongoRetroLogger(ConnectionString).Delete([id]);
+        }
+    }
+
+    /// <summary>
+    ///     Test databases are always named with this prefix and are dropped by name only after the
+    ///     prefix is checked, so a mistyped name can never drop a real database.
+    /// </summary>
+    private static class TestDatabaseNames
+    {
+        private const string Prefix = "Diagnostics_it_";
+
+        internal static string New()
+        {
+            return Prefix + Guid.NewGuid().ToString("N");
+        }
+
+        internal static Task DropAsync(MongoClient client, string databaseName, CancellationToken cancellationToken)
+        {
+            if (!databaseName.StartsWith(Prefix, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException($"Refusing to drop '{databaseName}': not a test database.");
+            }
+
+            return client.DropDatabaseAsync(databaseName, cancellationToken);
         }
     }
 

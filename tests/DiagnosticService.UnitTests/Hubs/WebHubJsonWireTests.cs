@@ -154,8 +154,16 @@ public sealed class WebHubJsonWireTests
 
         await using HubConnection connection = CreateWebConnection(factory);
         TaskCompletionSource<JsonElement> removed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<JsonElement> ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var readyRegistration = connection.On<JsonElement>(
+            "SetProcesses",
+            element => ready.TrySetResult(element)
+        );
         using var registration = connection.On<JsonElement>("RemoveProcess", element => removed.TrySetResult(element));
         await connection.StartAsync(TestContext.Current.CancellationToken);
+        // The initial process list is sent only after the handler has subscribed to removals, so
+        // waiting for it guarantees this client is listening before the removal fires.
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
         manager.RemoveProcess(processId);
 

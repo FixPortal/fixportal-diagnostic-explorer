@@ -42,7 +42,8 @@ public sealed class SkipOnMutationLaneFactAttribute : FactAttribute
 ///     execution/ordering/limit/batching are proven against MongoDB itself, not a mocked filter
 ///     or FindOptions. Every test tags its own documents with a unique correlation id and cleans
 ///     them up via <see cref="MongoRetroLogger.Delete" /> so the suite does not depend on — or
-///     pollute — the data in it. All of it runs in a throwaway database named by <c>TestDatabaseNames</c>,\r\n    ///     never in the real <c>Diagnostics</c> database.
+///     pollute — the data in it. All of it runs in a throwaway database named by
+///     <c>TestDatabaseNames</c>, never in the real <c>Diagnostics</c> database.
 ///     <para>
 ///     The weekly Stryker lane sets <c>DIAG_SKIP_MONGO_INTEGRATION=1</c>, and
 ///     <see cref="SkipOnMutationLaneFactAttribute" /> skips these tests at discovery. That
@@ -406,13 +407,18 @@ public sealed class MongoRetroLoggerIntegrationTests : IClassFixture<MongoRetroL
                 .CountDocumentsAsync(filter, cancellationToken: TestContext.Current.CancellationToken);
 
             isolated.Should().Be(1, "the message belongs in the collection the logger was configured with");
-            shared.Should().Be(0, "a configured logger must never write to the production Diagnostics.Log");
+            shared
+                .Should()
+                .Be(
+                    0,
+                    $"a configured logger must never write to the production Diagnostics.Log (stray row _id {id} needs removing by hand)"
+                );
         }
         finally
         {
+            // Deliberately no cleanup against Diagnostics.Log: this test must never write to or
+            // delete from it, even to tidy up after its own failure.
             await TestDatabaseNames.DropAsync(client, databaseName, CancellationToken.None);
-            // Only reached with a row in the shared collection if the assertion above has failed.
-            await new MongoRetroLogger(ConnectionString).Delete([id]);
         }
     }
 
@@ -441,8 +447,8 @@ public sealed class MongoRetroLoggerIntegrationTests : IClassFixture<MongoRetroL
     }
 
     /// <summary>
-    ///     Installs a server-side validator on the shared <c>Diagnostics.Log</c> collection and
-    ///     clears it on dispose. collMod needs the collection to exist, and on a fresh mongod (as
+    ///     Installs a server-side validator on the <c>Log</c> collection of this class's throwaway
+    ///     database and clears it on dispose. collMod needs the collection to exist, and on a fresh mongod (as
     ///     CI's service container is) nothing has written to it yet if the calling test runs
     ///     first, so it is created defensively; NamespaceExists (code 48) means a concurrent
     ///     write beat us to it, which is fine. Only tests that use this scope touch the

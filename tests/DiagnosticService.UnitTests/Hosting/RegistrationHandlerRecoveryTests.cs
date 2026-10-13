@@ -84,11 +84,17 @@ public sealed class RegistrationHandlerRecoveryTests
         };
         RegistrationHandler handler = new(new Uri(factory.Server.BaseAddress, "/diagnostics").ToString(), registration);
 
+        SharedCounter attemptCount = new();
         handler.Start(options =>
-            options.HttpMessageHandlerFactory = _ => new AlwaysFailHandler(factory.Server.CreateHandler())
+            options.HttpMessageHandlerFactory = _ => new AlwaysFailHandler(factory.Server.CreateHandler(), attemptCount)
         );
-        // Give the loop a couple of failed attempts before stopping.
-        await Task.Delay(TimeSpan.FromMilliseconds(200), TestContext.Current.CancellationToken);
+        // Positive signal, not a sleep: at least one attempt really reached the transport and
+        // failed before we stop, so the loop was running rather than never started.
+        await WaitUntil(
+            () => attemptCount.Value >= 1,
+            "a failed connection attempt",
+            TestContext.Current.CancellationToken
+        );
 
         Task stopTask = handler.Stop();
         var completed = await Task.WhenAny(
@@ -99,8 +105,29 @@ public sealed class RegistrationHandlerRecoveryTests
         completed.Should().Be(stopTask, "Stop() must complete promptly instead of hanging on a wedged retry loop");
         await stopTask; // propagate a fault from Stop() rather than letting WhenAny's success mask it
 
+        // Stop() awaits the registration loop, so once it has returned no further attempt can
+        // be made; the count is final.
+        var attemptsAtStop = attemptCount.Value;
+        attemptsAtStop.Should().BeGreaterThanOrEqualTo(1);
         RealtimeManager manager = factory.Services.GetRequiredService<RealtimeManager>();
         manager.GetProcesses().Should().NotContain(p => p.InstanceId == registration.InstanceId);
+    }
+
+    private static async Task WaitUntil(Func<bool> condition, string description, CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(30));
+        while (!condition())
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(20), deadline.Token);
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            {
+                throw new TimeoutException($"never observed: {description}");
+            }
+        }
     }
 
     private static async Task WaitUntilRegistered(
@@ -155,13 +182,14 @@ public sealed class RegistrationHandlerRecoveryTests
     }
 
     /// <summary>Fails every outgoing request.</summary>
-    private sealed class AlwaysFailHandler(HttpMessageHandler inner) : DelegatingHandler(inner)
+    private sealed class AlwaysFailHandler(HttpMessageHandler inner, SharedCounter counter) : DelegatingHandler(inner)
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken
         )
         {
+            counter.Increment();
             return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable));
         }
     }

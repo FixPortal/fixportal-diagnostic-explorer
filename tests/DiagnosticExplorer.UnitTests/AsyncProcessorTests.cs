@@ -85,29 +85,30 @@ public class AsyncProcessorTests
         processor.Append(second); // fills the size-1 queue
         Action<LoggingEvent> append = processor.Append;
 
-        var appendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var blockedAppend = Task.Run(
+        // A dedicated thread so its OS-level state is observable: a thread parked inside the
+        // blocking Add() reports WaitSleepJoin, which an unscheduled Task or a thread that has
+        // merely announced it is about to call Append cannot fake. Poll that state (generous
+        // ceiling) until the thread is either parked or has finished; a non-blocking Block mode
+        // finishes, and the assertions below fail.
+        var blockedAppend = new Thread(() => append(third)) { IsBackground = true };
+        blockedAppend.Start();
+        // Capture the observation inside the poll: a parked thread can briefly spin before it
+        // parks again, so re-reading ThreadState afterwards is racy.
+        var observedParked = false;
+        SpinWait.SpinUntil(
             () =>
             {
-                appendStarted.TrySetResult();
-                append(third);
+                observedParked = blockedAppend.ThreadState.HasFlag(ThreadState.WaitSleepJoin);
+                return observedParked || !blockedAppend.IsAlive;
             },
-            TestContext.Current.CancellationToken
+            GuardTimeout
         );
 
-        // Wait for the append call to have actually started on its own thread — an unscheduled
-        // Task also reports IsCompleted == false, which proves nothing. Once appendStarted has
-        // fired, the very next statement on that thread is the blocking Add() against a
-        // capacity-one queue that is already full (second occupies its only slot), so the call
-        // is now genuinely inside the blocked path rather than merely not-yet-scheduled.
-        await appendStarted.Task.WaitAsync(GuardTimeout, TestContext.Current.CancellationToken);
-
-        // Nothing can free queue space until the forward is released, so the Append
-        // cannot have completed — Block mode is applying back-pressure.
-        blockedAppend.IsCompleted.Should().BeFalse();
+        observedParked.Should().BeTrue("the append thread must park inside the blocking Add");
+        blockedAppend.IsAlive.Should().BeTrue("Block mode must not return while the queue is full");
 
         releaseForward.SetResult();
-        await blockedAppend.WaitAsync(GuardTimeout, TestContext.Current.CancellationToken);
+        blockedAppend.Join(GuardTimeout).Should().BeTrue();
         processor.Close();
 
         received.Should().HaveCount(3);

@@ -17,9 +17,15 @@
     "@modelcontextprotocol/sdk": "1.30.0",
     "less": "4.9.0",
     "postcss": "$postcss",
+    "postcss-nested": {
+      "postcss-selector-parser": "7.1.6"
+    },
     "qs": "6.16.0",
     "sockjs": {
       "uuid": "11.1.1"
+    },
+    "tailwindcss": {
+      "postcss-selector-parser": "7.1.6"
     }
   },
   "dependencies": {

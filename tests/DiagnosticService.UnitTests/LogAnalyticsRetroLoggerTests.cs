@@ -7,8 +7,9 @@ namespace DiagnosticService.UnitTests;
 
 /// <summary>
 ///     Covers the Log Analytics Retro backend's KQL generation, config validation, and the
-///     delete-not-supported contract. The write/query round-trip itself needs a live workspace
-///     and is exercised by the manual integration test (spec §11), not here.
+///     delete-not-supported contract. LogAnalyticsWireContractTests exercises actual SDK wire
+///     serialization and row decoding offline. The optional live integration test separately
+///     qualifies workspace deployment, permissions and service behavior (spec §11).
 /// </summary>
 public class LogAnalyticsRetroLoggerTests
 {

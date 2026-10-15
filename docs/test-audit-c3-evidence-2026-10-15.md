@@ -1,0 +1,13 @@
+# Log Analytics C3 catching evidence — 15 October 2026
+
+Baseline C3 (25 September; carried forward on 12 October) lacked ingestion-column and query-row mapping coverage. The caller-configured SDK-client constructor from PR233 supplies the existing seam; this batch changes no production behavior.
+
+`LogAnalyticsWireContractTests` uses the real LogsIngestionClient, LogsQueryClient, gzip/JSON serialization and SDK response-table decoding. Only HTTP service responses and token acquisition are substituted. One-record and 251-record cases assert all eight uploaded column names/values, configured DCR/stream/workspace paths, all seven RetroMsg fields, unique result IDs and the 250/1 batch boundary. Environment is asserted in the ingestion schema; RetroMsg intentionally has no Environment property.
+
+Sixteen temporary production mutations fail the intended assertions: each of eight upload-column renames; Machine, Process, User, Category, Message, Level and Date query mapping changes; and changing the batch size to251. Sources were restored byte-for-byte, then both cases passed without skips.
+
+Full local service/core suites ran on guest-local copies in two disposable Docker containers sharing a network-disabled namespace, with a dedicated Mongo instance. No host mounts, Docker socket or credentials were supplied. The package feed contained only explicitly declared cached dependencies plus two public .NET Framework reference-assembly packages. Service:146 passed/1 skipped; core:371 passed/1 skipped. The live Azure workspace test and the opt-in property performance test were the two skips, not passing evidence. The new C3 cases both executed. TRX reports are retained and both owned containers stopped.
+
+The backend now checks its actual TRX reports: Mongo contracts must execute and pass, and both offline SDK cases must execute and pass. Missing reports/cases and skipped required cases fail. Five pure Python guard tests include those negative cases; the guard also passes against the actual isolated-suite reports, finding12 Mongo and2 SDK cases. Formatting, actionlint, canonical hashes and configured workflow/gate guards pass.
+
+This proves the application/SDK wire mapping at a substituted HTTP boundary. It does not prove a deployed workspace's schema, RBAC or ingestion latency. The optional live qualification remains explicitly unavailable without its separate workspace configuration; it must not be reported as executed, and no Azure resources or account settings were changed.

@@ -1,0 +1,17 @@
+<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><Results>
+  <UnitTestResult testName="DiagnosticService.UnitTests.MongoRetroLoggerIntegrationTests.WriteMessages_DuplicatePlusRejectedDocument_Propagates" outcome="Passed"/>
+  <UnitTestResult testName="DiagnosticService.UnitTests.MongoRetroLoggerIntegrationTests.WriteMessages_DuplicateKeyOnlyBatch_IsTolerated" outcome="Passed"/>
+  <UnitTestResult testName="DiagnosticService.UnitTests.MongoRetroLoggerIntegrationTests.WriteMessages_StoresTheEnvironment" outcome="Passed"/>
+  <UnitTestResult testName="DiagnosticService.UnitTests.MongoRetroLoggerIntegrationTests.Delete_RemovesOnlyNamedRecords_SkipsMalformedIds_AndReportsCount" outcome="Passed"/>
+  <UnitTestResult testName="DiagnosticService.UnitTests.MongoRetroLoggerIntegrationTests.GetMessages_FilterBoundaries_AreInclusiveStartAndMinLevel_ExclusiveEnd" outcome="Passed"/>
+  <UnitTestResult testName="DiagnosticService.UnitTests.MongoRetroLoggerIntegrationTests.WriteMessages_InsertsDocument_WithAllFieldsIntact" outcome="Passed"/>
+  <UnitTestResult testName="DiagnosticService.UnitTests.MongoRetroLoggerIntegrationTests.WriteMessages_WithCancelledToken_ThrowsOperationCanceled" outcome="Passed"/>
+  <UnitTestResult testName="DiagnosticService.UnitTests.MongoRetroLoggerIntegrationTests.WriteMessages_UsesTheConfiguredDatabaseAndCollection" outcome="Passed"/>
+  <UnitTestResult testName="DiagnosticService.UnitTests.MongoRetroLoggerIntegrationTests.GetMessages_MoreRowsThanOneBatch_AreAllEnumeratedAcrossBatches" outcome="Passed"/>
+  <UnitTestResult testName="DiagnosticService.UnitTests.MongoRetroLoggerIntegrationTests.WriteMessages_NonDuplicateWriteFailure_Propagates" outcome="Passed"/>
+  <UnitTestResult testName="DiagnosticService.UnitTests.MongoRetroLoggerIntegrationTests.WriteMessages_DuplicateFirstInABatch_StillStoresTheValidDocumentBehindIt" outcome="Passed"/>
+  <UnitTestResult testName="DiagnosticService.UnitTests.MongoRetroLoggerIntegrationTests.GetMessages_FiltersOrdersAndLimits" outcome="Passed"/>
+  <UnitTestResult testName="DiagnosticService.UnitTests.LogAnalyticsWireContractTests.Upload_and_query_preserve_every_schema_field_through_the_real_sdk(count: 1)" outcome="Passed"/>
+  <UnitTestResult testName="DiagnosticService.UnitTests.LogAnalyticsWireContractTests.Upload_and_query_preserve_every_schema_field_through_the_real_sdk(count: 251)" outcome="Passed"/>
+  <UnitTestResult testName="Optional.LiveAzure" outcome="NotExecuted"/>
+</Results></TestRun>

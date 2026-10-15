@@ -7,21 +7,38 @@ import xml.etree.ElementTree as ET
 
 def verify(roots: list[ET.Element]) -> dict[str, int]:
     results = [node for root in roots for node in root.iter() if node.tag.rsplit("}", 1)[-1] == "UnitTestResult"]
+    mongo_methods = {
+        "WriteMessages_DuplicatePlusRejectedDocument_Propagates",
+        "WriteMessages_DuplicateKeyOnlyBatch_IsTolerated",
+        "WriteMessages_StoresTheEnvironment",
+        "Delete_RemovesOnlyNamedRecords_SkipsMalformedIds_AndReportsCount",
+        "GetMessages_FilterBoundaries_AreInclusiveStartAndMinLevel_ExclusiveEnd",
+        "WriteMessages_InsertsDocument_WithAllFieldsIntact",
+        "WriteMessages_WithCancelledToken_ThrowsOperationCanceled",
+        "WriteMessages_UsesTheConfiguredDatabaseAndCollection",
+        "GetMessages_MoreRowsThanOneBatch_AreAllEnumeratedAcrossBatches",
+        "WriteMessages_NonDuplicateWriteFailure_Propagates",
+        "WriteMessages_DuplicateFirstInABatch_StillStoresTheValidDocumentBehindIt",
+        "GetMessages_FiltersOrdersAndLimits",
+    }
     required = {
-        "MongoRetroLoggerIntegrationTests.": None,
-        "LogAnalyticsWireContractTests.": 2,
+        "MongoRetroLoggerIntegrationTests.": mongo_methods,
+        "LogAnalyticsWireContractTests.": {
+            f"Upload_and_query_preserve_every_schema_field_through_the_real_sdk(count: {count})"
+            for count in (1, 251)
+        },
     }
     counts = {}
     for name, expected in required.items():
-        matching = [node for node in results if name in node.get("testName", "")]
-        if not matching or (expected is not None and len(matching) != expected):
+        prefix = f"DiagnosticService.UnitTests.{name}"
+        matching = [node for node in results if node.get("testName", "").startswith(prefix)]
+        identities = [node.get("testName")[len(prefix):] for node in matching]
+        if not expected.issubset(identities):
             raise ValueError(f"{name}: missing required executed cases; found {len(matching)}")
+        if len(identities) != len(set(identities)):
+            raise ValueError(f"{name}: duplicate case results")
         if any(node.get("outcome") != "Passed" for node in matching):
             raise ValueError(f"{name}: required contract failed or was skipped")
-        if name == "LogAnalyticsWireContractTests.":
-            for count in (1, 251):
-                if not any(node.get("testName", "").endswith(f"(count: {count})") for node in matching):
-                    raise ValueError(f"{name}: missing SDK batch scenario count={count}")
         counts[name] = len(matching)
     return counts
 

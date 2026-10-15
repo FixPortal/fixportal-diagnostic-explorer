@@ -39,6 +39,8 @@
 
   "high": [
     ".github/scripts/test_workflow_contract.py",
+    ".github/scripts/assert_required_contract_results.py",
+    ".github/scripts/test_required_contract_results.py",
     ".github/canonical-assets.json",
     ".github/scripts/assert_canonical_assets.py",
     ".github/workflows/review-policy-guard.yml",

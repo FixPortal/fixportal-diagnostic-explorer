@@ -92,6 +92,11 @@ jobs:
           --results-directory ./TestResults
           --timeout 5m
 
+      - name: Require executed persistence contracts
+        run: |
+          python3 -m unittest discover -s .github/scripts -p test_required_contract_results.py
+          python3 .github/scripts/assert_required_contract_results.py TestResults
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:

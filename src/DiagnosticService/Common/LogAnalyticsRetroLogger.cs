@@ -97,6 +97,24 @@ public class LogAnalyticsRetroLogger : IRetroLogger
         _query = new Lazy<LogsQueryClient>(() => new LogsQueryClient(credential));
     }
 
+    /// <summary>
+    /// Uses caller-configured SDK clients for ingestion and queries. Hosts can supply their own
+    /// credentials, transports and retry settings while using the same column and row mappings.
+    /// The clients remain caller-owned; this logger does not dispose them.
+    /// </summary>
+    public LogAnalyticsRetroLogger(
+        LogAnalyticsSettings options,
+        LogsIngestionClient ingestionClient,
+        LogsQueryClient queryClient
+    )
+        : this(options)
+    {
+        ArgumentNullException.ThrowIfNull(ingestionClient);
+        ArgumentNullException.ThrowIfNull(queryClient);
+        _ingestion = new Lazy<LogsIngestionClient>(() => ingestionClient);
+        _query = new Lazy<LogsQueryClient>(() => queryClient);
+    }
+
     /// <summary>Log Analytics is append-only; per-record delete is not available.</summary>
     public bool SupportsDelete => false;
 

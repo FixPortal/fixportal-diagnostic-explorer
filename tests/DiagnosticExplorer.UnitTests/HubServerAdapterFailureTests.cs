@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using AwesomeAssertions;
 using DiagnosticExplorer;
 using DiagnosticExplorer.Logging;
@@ -178,6 +179,165 @@ public class HubServerAdapterFailureTests
         var frames = SendsOf(sends, nameof(IDiagnosticHubServer.StreamLogEvents));
         frames.Should().HaveCountGreaterThanOrEqualTo(3, "250 events cannot fit in one 100-event frame");
         frames.Should().OnlyContain(send => ((LogStreamEvent[])send.Args[0]!).Length <= 100);
+    }
+
+    [Fact]
+    public async Task Dispose_WhileStreamSendIsInFlight_KeepsItsCancellationSourceUsable()
+    {
+        using CancellationTokenSource ceiling = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken
+        );
+        ceiling.CancelAfter(TimeSpan.FromSeconds(30));
+        TaskCompletionSource<(string Method, CancellationToken Token)> entered = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        TaskCompletionSource<object?> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        HubConnection hub = CreateHubSubstitute();
+        hub.InvokeCoreAsync(Arg.Any<string>(), Arg.Any<Type>(), Arg.Any<object?[]>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                entered.TrySetResult((call.ArgAt<string>(0), call.Arg<CancellationToken>()));
+                return release.Task;
+            });
+        IDisposable adapter = CreateAdapter(hub, new LogEventStore());
+        Task? subscribe = null;
+        Task? stream = null;
+        CancellationTokenSource? source = null;
+        Exception? primary = null;
+        try
+        {
+            subscribe = (Task)AdapterType.GetMethod("SubscribeEvents")!.Invoke(adapter, [])!;
+            stream = ReadAdapterField<Task>(adapter, "_writeEventTask");
+            source = ReadAdapterField<CancellationTokenSource>(adapter, "_writeEventCancel");
+            await subscribe.WaitAsync(ceiling.Token);
+            var invocation = await entered.Task.WaitAsync(ceiling.Token);
+            invocation.Method.Should().Be(nameof(IDiagnosticHubServer.InitializeLogStream));
+            invocation.Token.Should().Be(source.Token);
+
+            adapter.Dispose();
+
+            source.IsCancellationRequested.Should().BeTrue();
+            invocation.Token.IsCancellationRequested.Should().BeTrue();
+            release.Task.IsCompleted.Should().BeFalse("the actual send reply is still positively held");
+            stream.IsCompleted.Should().BeFalse("the actual send cannot finish before its held reply");
+            Func<CancellationToken> readToken = () => source.Token;
+            readToken
+                .Should()
+                .NotThrow("the stream cancellation source must remain usable until the in-flight send completes")
+                .Which.Should()
+                .Be(invocation.Token);
+        }
+        catch (Exception error)
+        {
+            primary = error;
+            throw;
+        }
+        finally
+        {
+            await FinishStreamLifetimeCase(adapter, hub, subscribe, stream, source, release, primary);
+        }
+    }
+
+    private static T ReadAdapterField<T>(IDisposable adapter, string name)
+        where T : class =>
+        AdapterType.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(adapter) as T
+        ?? throw new InvalidOperationException("Missing adapter field: " + name);
+
+    private static async Task FinishStreamLifetimeCase(
+        IDisposable adapter,
+        HubConnection hub,
+        Task? subscribe,
+        Task? stream,
+        CancellationTokenSource? source,
+        TaskCompletionSource<object?> release,
+        Exception? primary
+    )
+    {
+        using CancellationTokenSource cleanupCeiling = new(TimeSpan.FromSeconds(30));
+        List<Exception> failures = [];
+        await CaptureStreamCleanup(
+            () =>
+            {
+                adapter.Dispose();
+                return Task.CompletedTask;
+            },
+            failures
+        );
+        await CaptureStreamCleanup(
+            () =>
+                source is not null && !source.IsCancellationRequested
+                    ? source.CancelAsync().WaitAsync(cleanupCeiling.Token)
+                    : Task.CompletedTask,
+            failures
+        );
+        release.TrySetResult(null);
+        await ObserveStreamTask(subscribe, source, cleanupCeiling.Token, failures);
+        bool streamObserved = await ObserveStreamTask(stream, source, cleanupCeiling.Token, failures);
+        if (streamObserved)
+        {
+            await CaptureStreamCleanup(
+                () =>
+                {
+                    source?.Dispose();
+                    return Task.CompletedTask;
+                },
+                failures
+            );
+            await CaptureStreamCleanup(() => hub.DisposeAsync().AsTask().WaitAsync(cleanupCeiling.Token), failures);
+        }
+        if (failures.Count != 0)
+        {
+            AggregateException cleanup = new("StreamCtsCleanupFailure: owned stream cleanup failed", failures);
+            if (primary is null)
+            {
+                throw cleanup;
+            }
+            throw new AggregateException(
+                "StreamCtsCleanupFailure: primary failure and owned stream cleanup failure",
+                primary,
+                cleanup
+            );
+        }
+    }
+
+    private static async Task CaptureStreamCleanup(Func<Task> cleanup, List<Exception> failures)
+    {
+        try
+        {
+            await cleanup();
+        }
+        catch (Exception error)
+        {
+            failures.Add(error);
+        }
+    }
+
+    private static async Task<bool> ObserveStreamTask(
+        Task? task,
+        CancellationTokenSource? source,
+        CancellationToken cancel,
+        List<Exception> failures
+    )
+    {
+        if (task is null)
+        {
+            return true;
+        }
+        try
+        {
+            await task.WaitAsync(cancel);
+            return true;
+        }
+        catch (OperationCanceledException) when (task.IsCanceled && source?.IsCancellationRequested == true)
+        {
+            // Cancellation of the captured owned stream is expected during teardown.
+            return true;
+        }
+        catch (Exception error)
+        {
+            failures.Add(error);
+            return task.IsCompleted;
+        }
     }
 
     private static List<(string Method, object?[] Args)> SendsOf(

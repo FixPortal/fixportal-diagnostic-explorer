@@ -121,6 +121,11 @@ public class RetroSearchLifecycleTests
     public async Task StartRetroSearch_WhenSearchCompletes_RemovesTrackedEntry()
     {
         var manager = CreateManager();
+        TaskCompletionSource<bool> endEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseEnd = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        RetroSearchProcess? search = null;
+        void OnFinished(object? _, EventArgs __) => finished.TrySetResult(true);
         await manager.StartAsync(TestContext.Current.CancellationToken);
         try
         {
@@ -131,31 +136,53 @@ public class RetroSearchLifecycleTests
             SetPrivateField(manager, "_logger", mockLogger);
 
             var client = Substitute.For<IWebHubClient>();
+            client
+                .ProcessSearchEnd(123)
+                .Returns(async _ =>
+                {
+                    endEntered.TrySetResult(true);
+                    await releaseEnd.Task;
+                });
             RetroQuery query = new() { SearchId = 123 };
 
             await manager.StartRetroSearch(query, "conn-123", client);
 
-            // The search runs on a background task and the manager drops the tracked entry on
-            // completion. Poll for that removal with a bounded timeout rather than subscribing to
-            // Finished and re-checking the map: that had a TOCTOU window (Finished could fire and
-            // HandleSearchFinished remove the entry before the subscription), leaving the wait to
-            // block to the runner timeout. The bounded poll fails fast instead of hanging.
+            // Hold the actual end callback before Finished, so subscribing cannot miss completion.
+            // The manager registered its Finished handler first; our witness follows its cleanup.
             var map = SearchMap(manager);
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(
-                TestContext.Current.CancellationToken
-            );
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
-            while (map.ContainsKey("conn-123"))
-            {
-                timeoutCts.Token.ThrowIfCancellationRequested();
-                await Task.Delay(20, timeoutCts.Token);
-            }
+            search = map["conn-123"];
+            search.Finished += OnFinished;
+            await endEntered.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+            releaseEnd.TrySetResult(true);
+            await finished.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
             map.Should().NotContainKey("conn-123");
         }
         finally
         {
-            await manager.StopAsync(TestContext.Current.CancellationToken);
+            releaseEnd.TrySetResult(true);
+            try
+            {
+                if (search is not null)
+                {
+                    try
+                    {
+                        await finished.Task.WaitAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
+                    }
+                    catch (TimeoutException exception)
+                    {
+                        throw new TimeoutException(
+                            "Timed out joining the actual retro search Finished callback during cleanup.",
+                            exception
+                        );
+                    }
+                }
+            }
+            finally
+            {
+                search?.Finished -= OnFinished;
+                await manager.StopAsync(CancellationToken.None);
+            }
         }
     }
 

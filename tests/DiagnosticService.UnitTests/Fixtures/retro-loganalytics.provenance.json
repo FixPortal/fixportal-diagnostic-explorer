@@ -1,0 +1,18 @@
+{
+  "phase": 1,
+  "sourceCommit": "8498443e511a159bd516307870cc25a8b2c71c4e",
+  "source": "infra/retro-loganalytics.bicep",
+  "sourceBytes": 5632,
+  "sourceSHA256": "9b7a24e96597fc733ff3be3988a2106a6e8124f59d3e812e8d94f3b83349ec80",
+  "compilerVersion": "Bicep CLI version 0.46.1 (545b338e2c)",
+  "compilerURL": "https://github.com/Azure/bicep/releases/download/v0.46.1/bicep-linux-x64",
+  "compilerBytes": 104933840,
+  "compilerSHA256": "3e011d629ea4311b7a7dd8f0040ab2b1a072ea4ff5d02cb75e0e55a9a6703fb9",
+  "templateBytes": 7560,
+  "templateSHA256": "be777dbc7a74ec5be331f98c83803af39a921e4e593e18017dafaecc229b1d4f",
+  "scope": "Offline compilation only; no deployment or schema-consumer assertion",
+  "originalRunId": 38919984595,
+  "originalHead": "30b1918fc14c7b3f185ec5fc75ab080a32b260bb",
+  "originalArtifactId": 12053184221,
+  "fixturePurpose": "Generated compiler output; regenerate through the pinned compile step, never hand-maintain schema columns."
+}

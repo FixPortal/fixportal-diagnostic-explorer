@@ -24,4 +24,8 @@
     <ProjectReference Include="..\..\src\DiagnosticExplorer.Hosting\DiagnosticExplorer.Hosting.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Fixtures/retro-loganalytics.compiled.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

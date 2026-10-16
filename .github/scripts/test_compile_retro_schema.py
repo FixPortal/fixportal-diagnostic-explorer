@@ -141,6 +141,33 @@ class EnvelopeTests(unittest.TestCase):
         self.assertEqual(compiler.public_url('https://release-assets.githubusercontent.com/a'),
                          'https://release-assets.githubusercontent.com/a')
 
+    def test_actual_generated_fixture_has_current_source_and_tool_lineage(self):
+        fixture = (ROOT / compiler.FIXTURE).read_bytes()
+        lineage = json.loads((ROOT / compiler.LINEAGE).read_text(encoding='utf-8'))
+        source = (ROOT / compiler.SOURCE).read_bytes()
+        compiler.verify_generated_fixture(fixture, lineage, fixture, source, lineage['compilerVersion'])
+
+    def test_fresh_output_source_and_pin_drift_are_rejected(self):
+        fixture = (ROOT / compiler.FIXTURE).read_bytes()
+        lineage = json.loads((ROOT / compiler.LINEAGE).read_text(encoding='utf-8'))
+        source = (ROOT / compiler.SOURCE).read_bytes()
+        for mutation in ('output', 'source', 'pin', 'version', 'missing-lineage'):
+            with self.subTest(mutation=mutation):
+                changed = dict(lineage)
+                actual, current_source, version = fixture, source, lineage['compilerVersion']
+                if mutation == 'output':
+                    actual += b' '
+                elif mutation == 'source':
+                    current_source += b' '
+                elif mutation == 'pin':
+                    changed['compilerSHA256'] = '0' * 64
+                elif mutation == 'version':
+                    version = 'Bicep CLI version 0.0.0 (fixture)'
+                else:
+                    changed.pop('sourceSHA256')
+                with self.assertRaises(ValueError):
+                    compiler.verify_generated_fixture(fixture, changed, actual, current_source, version)
+
     def test_nonzero_compiler_emits_bounded_retained_failure_diagnostics_without_a_child(self):
         class Process:
             stdout = io.BytesIO(b"x" * 17000 + b"actual-synthetic-compiler-diagnostic")

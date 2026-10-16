@@ -17,18 +17,6 @@ namespace DiagnosticService.UnitTests;
 /// <summary>C3: real Azure SDK serialization and row decoding, with only the HTTP service substituted.</summary>
 public sealed class LogAnalyticsWireContractTests
 {
-    private static readonly string[] Columns =
-    [
-        "TimeGenerated",
-        "Level",
-        "Machine",
-        "Process",
-        "User",
-        "Category",
-        "Message",
-        "Environment",
-    ];
-
     private sealed class FixtureCredential : TokenCredential
     {
         public override AccessToken GetToken(TokenRequestContext requestContext, CancellationToken cancellationToken) =>
@@ -40,7 +28,7 @@ public sealed class LogAnalyticsWireContractTests
         ) => ValueTask.FromResult(GetToken(requestContext, cancellationToken));
     }
 
-    private sealed class WireService : HttpMessageHandler
+    private sealed class WireService(LogAnalyticsDeploymentSchema schema) : HttpMessageHandler
     {
         public List<JsonElement> Uploaded { get; } = [];
         public List<string> UploadPaths { get; } = [];
@@ -75,17 +63,10 @@ public sealed class LogAnalyticsWireContractTests
             QueryBody = body.RootElement.Clone();
             // The substitute service uses the externally declared column schema. It does not call
             // the logger's mapper or construct RetroMsg: the real query SDK must decode these rows.
-            var rows = Uploaded.Select(row => Columns.Select(column => row.GetProperty(column)).ToArray()).ToArray();
-            var columns = Columns.Select(name => new
-            {
-                name,
-                type = name switch
-                {
-                    "TimeGenerated" => "datetime",
-                    "Level" => "int",
-                    _ => "string",
-                },
-            });
+            var rows = Uploaded
+                .Select(row => schema.Columns.Select(column => row.GetProperty(column.Name)).ToArray())
+                .ToArray();
+            var columns = schema.Columns.Select(column => new { name = column.Name, type = column.Type });
             var json = JsonSerializer.Serialize(
                 new
                 {
@@ -112,7 +93,12 @@ public sealed class LogAnalyticsWireContractTests
     [InlineData(251)]
     public async Task Upload_and_query_preserve_every_schema_field_through_the_real_sdk(int count)
     {
-        using var service = new WireService();
+        Func<LogAnalyticsDeploymentSchema> loadDeployment = LogAnalyticsDeploymentSchema.Load;
+        LogAnalyticsDeploymentSchema schema = loadDeployment
+            .Should()
+            .NotThrow("the compiled table and DCR must declare one compatible ingestion and query schema")
+            .Which;
+        using var service = new WireService(schema);
         using var http = new HttpClient(service);
         using var transport = new HttpClientTransport(http);
         var credential = new FixtureCredential();
@@ -128,6 +114,14 @@ public sealed class LogAnalyticsWireContractTests
             TableName = "DiagRetro_CL",
             WorkspaceId = "11111111-1111-1111-1111-111111111111",
         };
+        schema.TableName.Should().Be(settings.TableName, "the compiled table must match the independent SDK settings");
+        schema
+            .StreamName.Should()
+            .Be(settings.StreamName, "the compiled stream must match the independent SDK settings");
+        schema
+            .Columns.Single(column => column.Name == "Level")
+            .Type.Should()
+            .Be("int", "the compiled Level column must match the production MapRow GetInt32 contract");
         var logger = new LogAnalyticsRetroLogger(
             settings,
             new LogsIngestionClient(new Uri(settings.DceEndpoint), credential, ingestionOptions),
@@ -158,7 +152,11 @@ public sealed class LogAnalyticsWireContractTests
         for (var index = 0; index < count; index++)
         {
             var uploaded = service.Uploaded[index];
-            uploaded.EnumerateObject().Select(property => property.Name).Should().BeEquivalentTo(Columns);
+            uploaded
+                .EnumerateObject()
+                .Select(property => property.Name)
+                .Should()
+                .BeEquivalentTo(schema.Columns.Select(column => column.Name));
             uploaded.GetProperty("TimeGenerated").GetDateTime().Should().Be(messages[index].Date);
             uploaded.GetProperty("Level").GetInt32().Should().Be(4);
             foreach (var field in new[] { "Machine", "Process", "User", "Category", "Message" })
@@ -176,10 +174,16 @@ public sealed class LogAnalyticsWireContractTests
             MaxRecords = count,
         };
         var batches = new List<RetroMsg[]>();
-        await foreach (var batch in logger.GetMessages(query, TestContext.Current.CancellationToken))
+        Func<Task> readUsingCompiledSchema = async () =>
         {
-            batches.Add(batch);
-        }
+            await foreach (var batch in logger.GetMessages(query, TestContext.Current.CancellationToken))
+            {
+                batches.Add(batch);
+            }
+        };
+        await readUsingCompiledSchema
+            .Should()
+            .NotThrowAsync("the real query SDK and production mapper must accept the compiled deployment column types");
 
         service.QueryPath.Should().Be($"/v1/workspaces/{settings.WorkspaceId}/query");
         service

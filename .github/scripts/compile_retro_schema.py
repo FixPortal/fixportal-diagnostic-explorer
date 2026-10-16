@@ -168,6 +168,33 @@ def regular(path):
         raise ValueError("Expected an ordinary, unlinked file: " + str(path))
 
 
+FIXTURE = "tests/DiagnosticService.UnitTests/Fixtures/retro-loganalytics.compiled.json"
+LINEAGE = "tests/DiagnosticService.UnitTests/Fixtures/retro-loganalytics.provenance.json"
+
+
+def verify_generated_fixture(fixture, lineage, actual, source, version):
+    if fixture != actual:
+        raise ValueError("Fresh compiled template differs from the tracked generated fixture; regenerate and review it")
+    expected = {"source": SOURCE, "sourceBytes": len(source),
+                "sourceSHA256": hashlib.sha256(source).hexdigest(), "compilerURL": URL,
+                "compilerBytes": BINARY_BYTES, "compilerSHA256": BINARY_SHA256,
+                "compilerVersion": version.strip(), "templateBytes": len(actual),
+                "templateSHA256": hashlib.sha256(actual).hexdigest()}
+    if any(lineage.get(key) != value for key, value in expected.items()):
+        raise ValueError("Tracked generated fixture source/tool lineage differs from actual compilation")
+
+
+def check_tracked_fixture(repo, actual, source, version):
+    fixture, lineage = repo / FIXTURE, repo / LINEAGE
+    for path, cap in ((fixture, TEMPLATE_CAP), (lineage, 64 * 1024)):
+        regular(path)
+        if path.resolve() != path or not 0 < path.stat().st_size <= cap:
+            raise ValueError("Unexpected generated fixture path or envelope")
+    verify_generated_fixture(fixture.read_bytes(),
+                             json.loads(lineage.read_text(encoding="utf-8"), object_pairs_hook=unique_object),
+                             actual, source, version)
+
+
 def compile_artifact(repo, runner_temp):
     if os.name != "posix":
         raise RuntimeError("This reviewed compiler lane is Linux only")
@@ -207,7 +234,8 @@ def compile_artifact(repo, runner_temp):
     if output.stat().st_size > TEMPLATE_CAP:
         raise ValueError("Compiled template exceeds its envelope cap")
     data = output.read_bytes()
-    template_envelope(data)  # No selected-resource/column shape assumptions in phase one.
+    template_envelope(data)
+    check_tracked_fixture(repo, data, before, version.decode().strip())
     if source.read_bytes() != before:
         raise ValueError("Tracked Bicep source changed during compilation")
     head = run_bounded(["git", "-C", str(repo), "rev-parse", "HEAD"], 10, deadline, work / "source-head").decode().strip()
@@ -223,7 +251,7 @@ def compile_artifact(repo, runner_temp):
                   "compilerVersion": version.decode().strip(), "compilerURL": URL,
                   "compilerBytes": BINARY_BYTES, "compilerSHA256": BINARY_SHA256,
                   "templateBytes": len(data), "templateSHA256": hashlib.sha256(data).hexdigest(),
-                  "scope": "Offline compilation only; no deployment or schema-consumer assertion"}
+                  "scope": "Offline compilation and tracked-fixture freshness; actual SDK tests own the consumer assertion"}
     (artifacts / "compiler-provenance.json").write_text(json.dumps(provenance, indent=2), encoding="utf-8")
     if {path.name for path in artifacts.iterdir()} != {
             "compiler-version.txt", "compiler-provenance.json", "retro-loganalytics.json"}:

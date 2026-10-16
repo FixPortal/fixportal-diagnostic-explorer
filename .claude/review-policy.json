@@ -38,6 +38,9 @@
   "version": 1,
 
   "high": [
+    ".github/scripts/compile_retro_schema.py",
+    ".github/scripts/retro_schema_workflow.py",
+    ".github/scripts/test_compile_retro_schema.py",
     ".github/scripts/test_workflow_contract.py",
     ".github/scripts/assert_required_contract_results.py",
     ".github/scripts/test_required_contract_results.py",

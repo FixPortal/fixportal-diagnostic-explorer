@@ -16,6 +16,10 @@ public class RetroManager : IHostedService
     private static readonly ILog _log = LogManager.GetLogger(typeof(RetroManager));
 
     private readonly ConcurrentDictionary<string, RetroSearchProcess> _searches = new();
+
+    // Keep this reusable across starts/stops. No AvailableWaitHandle is used; disposing the
+    // gate while another StopAsync is waiting would introduce a second teardown race.
+    private readonly SemaphoreSlim _stopGate = new(1, 1);
     private ISubject<IList<DiagnosticMsg>>? _logSubject;
     private IDisposable? _logSubscription;
     private IRetroLogger? _logger;
@@ -107,18 +111,30 @@ public class RetroManager : IHostedService
         // Stop accepting input, then let the drain loop flush what's already queued before the
         // host tears the process down. Previously StopAsync returned immediately without awaiting
         // the drain or disposing the Rx subscription, so queued messages were lost on recycle.
-        _logSubject?.OnCompleted();
-        _logSubject = null;
-        _logSubscription?.Dispose();
-        _logSubscription = null;
-        _ownedLogSubject?.Dispose();
-        _ownedLogSubject = null;
-
-        _writeChannel?.Writer.TryComplete();
-
-        if (_loggingTask != null)
+        Task? loggingTask;
+        await _stopGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
         {
-            await Task.WhenAny(_loggingTask, Task.Delay(TimeSpan.FromSeconds(5), cancellationToken));
+            _logSubject?.OnCompleted();
+            _logSubject = null;
+            _logSubscription?.Dispose();
+            _logSubscription = null;
+            _ownedLogSubject?.Dispose();
+            _ownedLogSubject = null;
+
+            _writeChannel?.Writer.TryComplete();
+            loggingTask = _loggingTask;
+        }
+        finally
+        {
+            _stopGate.Release();
+        }
+
+        // Every caller still awaits the drain under its original shutdown budget, including
+        // callers which arrived after another stop had already completed subject teardown.
+        if (loggingTask != null)
+        {
+            await Task.WhenAny(loggingTask, Task.Delay(TimeSpan.FromSeconds(5), cancellationToken));
         }
     }
 

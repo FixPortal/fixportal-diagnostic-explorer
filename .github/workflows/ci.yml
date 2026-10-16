@@ -75,6 +75,22 @@ jobs:
       - name: Check C# formatting
         run: dotnet csharpier check .
 
+      - name: Compile pinned Retro deployment template
+        timeout-minutes: 3
+        run: >-
+          python3 .github/scripts/compile_retro_schema.py
+          --repo "$GITHUB_WORKSPACE" --runner-temp "$RUNNER_TEMP"
+
+      - name: Retain compiled Retro deployment template
+        uses: actions/upload-artifact@v7
+        with:
+          name: retro-compiled-template
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/diag-retro-compile/artifacts/compiler-version.txt
+            ${{ runner.temp }}/diag-retro-compile/artifacts/retro-loganalytics.json
+            ${{ runner.temp }}/diag-retro-compile/artifacts/compiler-provenance.json
+
       - name: Restore
         run: dotnet restore DiagnosticExplorer.slnx
         env:

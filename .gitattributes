@@ -1,2 +1,6 @@
 *.cs text eol=crlf
 *.sh text eol=lf
+
+# Preserve the exact reviewed standalone Bicep compiler output across platforms.
+tests/DiagnosticService.UnitTests/Fixtures/retro-loganalytics.compiled.json -text
+infra/retro-loganalytics.bicep text eol=lf

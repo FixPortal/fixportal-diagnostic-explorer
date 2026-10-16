@@ -1,8 +1,14 @@
+using System.Reflection;
 using AwesomeAssertions;
+using Diagnostic.Service.Common;
 using Diagnostic.Service.Hubs;
 using DiagnosticExplorer;
 using Microsoft.AspNetCore.Http.Connections.Client;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace DiagnosticService.UnitTests.Hosting;
@@ -111,6 +117,153 @@ public sealed class RegistrationHandlerRecoveryTests
         attemptsAtStop.Should().BeGreaterThanOrEqualTo(1);
         RealtimeManager manager = factory.Services.GetRequiredService<RealtimeManager>();
         manager.GetProcesses().Should().NotContain(p => p.InstanceId == registration.InstanceId);
+    }
+
+    [Fact]
+    public async Task Start_AfterSuccessfulRegistration_RenewsTheSameLiveConnection()
+    {
+        using CancellationTokenSource ceiling = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken
+        );
+        ceiling.CancelAfter(TimeSpan.FromSeconds(30));
+        CancellationToken ct = ceiling.Token;
+        using ProgramHostedTests.DiagnosticServiceFactory owner = new(
+            new Dictionary<string, string?>
+            {
+                ["DiagServiceSettings:UseSpaProxy"] = "false",
+                ["DiagServiceSettings:SpaDirectory"] = Path.GetTempPath(),
+            }
+        );
+        RenewalWitness witness = new();
+        using var factory = owner.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IHostedService>();
+                services.AddSingleton(witness);
+                services.AddSignalR(options => options.AddFilter<RenewalWitness>());
+            })
+        );
+        Registration registration = new()
+        {
+            ProcessName = "renewal-process",
+            MachineName = "renewal-machine",
+            InstanceId = "renewal-" + Guid.NewGuid().ToString("N"),
+        };
+        RegistrationHandler handler = new(new Uri(factory.Server.BaseAddress, "/diagnostics").ToString(), registration);
+        Task? registrationLoop = null;
+        Exception? primary = null;
+        try
+        {
+            handler.Start(options => options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler());
+            registrationLoop =
+                typeof(RegistrationHandler)
+                    .GetField("_registrationLoop", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .GetValue(handler) as Task;
+            registrationLoop.Should().NotBeNull();
+            RenewalSnapshot first = await witness.First.Task.WaitAsync(ct);
+            first.InstanceId.Should().Be(registration.InstanceId);
+            first.ConnectionId.Should().NotBeNullOrWhiteSpace();
+
+            Task completed = await Task.WhenAny(witness.Second.Task, registrationLoop).WaitAsync(ct);
+            ct.ThrowIfCancellationRequested();
+            if (completed == registrationLoop)
+            {
+                await registrationLoop;
+            }
+            witness
+                .Second.Task.IsCompletedSuccessfully.Should()
+                .BeTrue("successful registration must renew on the next cycle instead of ending its actual loop");
+            RenewalSnapshot second = await witness.Second.Task;
+            second.CompletedCalls.Should().Be(2);
+            second.InstanceId.Should().Be(first.InstanceId);
+            second.ConnectionId.Should().Be(first.ConnectionId);
+            RealtimeManager manager = factory.Services.GetRequiredService<RealtimeManager>();
+            var process = manager.GetProcesses().Single(p => p.InstanceId == registration.InstanceId);
+            process.State.Should().Be(OnlineState.Online);
+            process.ConnectionId.Should().Be(first.ConnectionId);
+            manager.GetClientHandler(first.ConnectionId).Should().NotBeNull();
+        }
+        catch (Exception error)
+        {
+            primary = error;
+            throw;
+        }
+        finally
+        {
+            // Stop cancels the producer's own scheduled delay and joins both actual owned loops.
+            // Observe a captured loop even if it already faulted; no pending helper tasks/barriers.
+            List<Exception> cleanup = [];
+            try
+            {
+                await handler.Stop();
+            }
+            catch (Exception error)
+            {
+                cleanup.Add(error);
+            }
+            if (registrationLoop is not null)
+            {
+                try
+                {
+                    await registrationLoop;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Stop cancels the owned registration delay; its cancellation is expected.
+                }
+                catch (Exception error)
+                {
+                    cleanup.Add(error);
+                }
+            }
+            foreach (Exception error in cleanup)
+            {
+                Console.WriteLine("D1RenewalCleanupFailure: " + error);
+            }
+            if (primary is null && cleanup.Count != 0)
+            {
+                throw new AggregateException("D1RenewalCleanupFailure", cleanup);
+            }
+        }
+    }
+
+    private sealed record RenewalSnapshot(string InstanceId, string ConnectionId, int CompletedCalls);
+
+    private sealed class RenewalWitness : IHubFilter
+    {
+        private int _completedCalls;
+        public TaskCompletionSource<RenewalSnapshot> First { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<RenewalSnapshot> Second { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async ValueTask<object?> InvokeMethodAsync(
+            HubInvocationContext invocationContext,
+            Func<HubInvocationContext, ValueTask<object?>> next
+        )
+        {
+            object? result = await next(invocationContext);
+            if (invocationContext.HubMethodName == nameof(DiagnosticHub.Register))
+            {
+                var response = (RpcResult<RegistrationResponse>)result!;
+                response
+                    .IsSuccess.Should()
+                    .BeTrue("the actual hub registration must succeed before renewal is observed");
+                response.Response.RenewTimeSeconds = 1;
+                var request = (Registration)invocationContext.HubMethodArguments[0]!;
+                int count = Interlocked.Increment(ref _completedCalls);
+                RenewalSnapshot snapshot = new(request.InstanceId!, invocationContext.Context.ConnectionId, count);
+                if (count == 1)
+                {
+                    First.TrySetResult(snapshot);
+                }
+                else if (count == 2)
+                {
+                    Second.TrySetResult(snapshot);
+                }
+            }
+            return result;
+        }
     }
 
     private static async Task WaitUntil(Func<bool> condition, string description, CancellationToken cancellationToken)

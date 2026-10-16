@@ -65,22 +65,69 @@ public sealed class AgentDisconnectCompositionTests(ITestOutputHelper output)
         bool HandlerPresent
     );
 
-    // An independent transport-lifecycle witness. It observes the actual hub's completed
-    // OnDisconnected path; it never calls manager teardown or invokes a synthetic event.
+    // Cancellation callbacks run synchronously in LIFO order. Register BEFORE the actual
+    // OnConnected/Arm path so this callback snapshots state AFTER the production callback
+    // returns. The hub/client disconnect events alone do not establish that ordering.
     private sealed class DisconnectWitness(RealtimeManager manager) : IHubFilter
     {
-        private readonly ConcurrentDictionary<
-            string,
-            (string ProcessId, TaskCompletionSource<DisconnectSnapshot> Completion)
-        > _watched = new();
+        private readonly ConcurrentDictionary<string, ConnectionObservation> _connections = new();
 
-        public Task<DisconnectSnapshot> Watch(string connectionId, string processId)
+        public async Task OnConnectedAsync(HubLifetimeContext context, Func<HubLifetimeContext, Task> next)
         {
-            TaskCompletionSource<DisconnectSnapshot> completion = new(
-                TaskCreationOptions.RunContinuationsAsynchronously
-            );
-            _watched.TryAdd(connectionId, (processId, completion)).Should().BeTrue();
-            return completion.Task;
+            string id = context.Context.ConnectionId;
+            ConnectionObservation observation = new(context.Context.ConnectionAborted);
+            _connections.TryAdd(id, observation).Should().BeTrue();
+            observation.Registration = observation.Aborted.Register(() => CaptureAfterArm(id, observation));
+            try
+            {
+                await next(context);
+            }
+            catch
+            {
+                _connections.TryRemove(id, out _);
+                await observation.Registration.DisposeAsync();
+                throw;
+            }
+        }
+
+        public async Task<DisconnectSnapshot> Watch(string connectionId, string processId)
+        {
+            ConnectionObservation observation = _connections[connectionId];
+            observation
+                .Aborted.IsCancellationRequested.Should()
+                .BeFalse("the real registered connection must still be live before the controlled abort");
+            Volatile.Write(ref observation.ProcessId, processId);
+            DisconnectSnapshot? snapshot = await observation.CallbackSnapshot.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            await observation.HubDisconnected.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            snapshot.Should().NotBeNull("the observation was armed before the controlled cancellation");
+            return snapshot;
+        }
+
+        private void CaptureAfterArm(string connectionId, ConnectionObservation observation)
+        {
+            try
+            {
+                string? processId = Volatile.Read(ref observation.ProcessId);
+                // Startup/fixture cleanup can abort an unwatched connection. Complete its
+                // registration without inventing a process snapshot or throwing from Cancel.
+                DisconnectSnapshot? snapshot = null;
+                if (processId is not null)
+                {
+                    DiagProcess process = manager.GetProcesses().Single(p => p.Id == processId);
+                    snapshot = new DisconnectSnapshot(
+                        process.Id,
+                        process.State,
+                        process.ConnectionId,
+                        process.Message,
+                        manager.GetClientHandler(connectionId) is not null
+                    );
+                }
+                observation.CallbackSnapshot.TrySetResult(snapshot);
+            }
+            catch (Exception exception)
+            {
+                observation.CallbackSnapshot.TrySetException(exception);
+            }
         }
 
         public async Task OnDisconnectedAsync(
@@ -89,20 +136,38 @@ public sealed class AgentDisconnectCompositionTests(ITestOutputHelper output)
             Func<HubLifetimeContext, Exception?, Task> next
         )
         {
-            await next(context, exception);
-            if (_watched.TryRemove(context.Context.ConnectionId, out var watched))
+            if (!_connections.TryGetValue(context.Context.ConnectionId, out var observation))
             {
-                DiagProcess process = manager.GetProcesses().Single(p => p.Id == watched.ProcessId);
-                watched.Completion.TrySetResult(
-                    new DisconnectSnapshot(
-                        process.Id,
-                        process.State,
-                        process.ConnectionId,
-                        process.Message,
-                        manager.GetClientHandler(context.Context.ConnectionId) is not null
-                    )
-                );
+                await next(context, exception);
+                return;
             }
+            try
+            {
+                await next(context, exception);
+                observation.HubDisconnected.TrySetResult(true);
+                await observation.CallbackSnapshot.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            }
+            catch (Exception failure)
+            {
+                observation.HubDisconnected.TrySetException(failure);
+                throw;
+            }
+            finally
+            {
+                _connections.TryRemove(context.Context.ConnectionId, out _);
+                await observation.Registration.DisposeAsync();
+            }
+        }
+
+        private sealed class ConnectionObservation(CancellationToken aborted)
+        {
+            public CancellationToken Aborted { get; } = aborted;
+            public CancellationTokenRegistration Registration { get; set; }
+            public string? ProcessId;
+            public TaskCompletionSource<DisconnectSnapshot?> CallbackSnapshot { get; } =
+                new(TaskCreationOptions.RunContinuationsAsynchronously);
+            public TaskCompletionSource<bool> HubDisconnected { get; } =
+                new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
     }
 

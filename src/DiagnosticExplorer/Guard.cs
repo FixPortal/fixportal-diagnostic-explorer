@@ -1,5 +1,3 @@
-using System;
-
 namespace DiagnosticExplorer;
 
 internal static class Guard

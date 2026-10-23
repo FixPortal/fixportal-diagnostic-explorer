@@ -1,9 +1,6 @@
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Reflection;
 
 namespace DiagnosticExplorer;
@@ -53,6 +50,8 @@ internal class CollectionGetter : PropertyGetter
         // type so a collection-typed delegate/field property doesn't NRE on the very first render
         // and blank every property of the type it belongs to.
         Type collectionType = info?.PropertyType ?? configuration?.ValueType;
+        // ReSharper disable once AssignNullToNotNullAttribute
+        // PropertyGetter's constructor rejects a null info together with a null configuration, so one of the two is set.
         Type genericType = GenericObjectCache.FindGenericInterface(collectionType, typeof(IDictionary<,>));
         bool isDictionary = typeof(IDictionary).IsAssignableFrom(collectionType);
 
@@ -207,6 +206,8 @@ internal class CollectionGetter : PropertyGetter
                 return;
             }
 
+            // ReSharper disable PossibleMultipleEnumeration
+            // rawCol is only enumerated here; the later uses hand the collection to AddSummary as a reference.
             List<object> col = rawCol.Cast<object>().Take(10001).ToList();
             int actualCount = col.Count;
             bool wasTruncated = actualCount > 10000;
@@ -228,6 +229,7 @@ internal class CollectionGetter : PropertyGetter
                 case CollectionMode.Count:
                     string val = wasTruncated ? "10000+ items" : FormatValue(displayCount);
                     AddSummary(bag, catPrepend, val, rawCol, obj);
+                    // ReSharper restore PossibleMultipleEnumeration
                     break;
                 case CollectionMode.Concatenate:
                     AppendConcatenated(col, bag, catPrepend);
@@ -442,7 +444,7 @@ internal class CollectionGetter : PropertyGetter
                     getter.GetProperties(listObject, bag, newPrepend);
                 }
 
-                if (bag.Categories.FindByName(newPrepend) is Category cat)
+                if (bag.Categories.FindByName(newPrepend) is { } cat)
                 {
                     cat.ValueObject = listObject;
 

@@ -114,7 +114,10 @@ public sealed class EventSinkRouter : IDisposable
             throw new ArgumentOutOfRangeException(nameof(options), "The configured match mode is invalid.");
         }
 
-        return options.Routes?.Select((route, index) => new CompiledRoute(route, index)).ToArray() ?? [];
+        // ReSharper disable once ConstantConditionalAccessQualifier
+        // ReSharper disable once ConstantNullCoalescingCondition
+        // Routes and Destinations have public setters, so a caller can still assign null despite the annotation.
+        return options.Routes?.Select(route => new CompiledRoute(route)).ToArray() ?? [];
     }
 
     private List<CompiledRoute> FindMatchingRoutes(string? category, LogLevel level)
@@ -140,7 +143,7 @@ public sealed class EventSinkRouter : IDisposable
 
     private sealed class CompiledRoute
     {
-        public CompiledRoute(EventSinkRoute route, int order)
+        public CompiledRoute(EventSinkRoute route)
         {
             if (route == null)
             {
@@ -169,21 +172,22 @@ public sealed class EventSinkRouter : IDisposable
 
             if (
                 route.Destinations.Any(destination =>
-                    destination == null || !IsValid(destination.SinkName) || !IsValid(destination.SinkCategory)
+                    // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+                    // A public list can hold a null element despite the annotation.
+                    destination == null
+                    || !IsValid(destination.SinkName)
+                    || !IsValid(destination.SinkCategory)
                 )
             )
             {
                 throw new ArgumentException("Each route destination requires a sink name and category.", nameof(route));
             }
 
-            Order = order;
             CategoryPattern = route.CategoryPattern.Trim();
             MinLevel = route.MinLevel;
             MaxLevel = route.MaxLevel;
             StopProcessing = route.StopProcessing;
         }
-
-        public int Order { get; }
 
         public string CategoryPattern { get; }
 

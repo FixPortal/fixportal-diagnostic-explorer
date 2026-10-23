@@ -1,6 +1,5 @@
 using System.Net;
 using AwesomeAssertions;
-using DiagnosticExplorer.Logging;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.SignalR.Protocol;
@@ -169,7 +168,7 @@ public sealed class HubServerAdapterDeduplicationTests : IDisposable
         );
 
         return (IDisposable)(
-            Activator.CreateInstance(AdapterType, hub, (LogEventStore?)null)
+            Activator.CreateInstance(AdapterType, hub, null)
             ?? throw new InvalidOperationException("Failed to construct HubServerAdapter")
         );
     }

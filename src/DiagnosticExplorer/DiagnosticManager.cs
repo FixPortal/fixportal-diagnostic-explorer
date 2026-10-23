@@ -1,18 +1,13 @@
-using System;
 using System.Collections;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
 using DiagnosticExplorer.Logging;
 using DiagnosticExplorer.Util;
 
@@ -544,8 +539,7 @@ public static class DiagnosticManager
     {
         bool IEqualityComparer<object>.Equals(object x, object y) => ReferenceEquals(x, y);
 
-        int IEqualityComparer<object>.GetHashCode(object obj) =>
-            System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+        int IEqualityComparer<object>.GetHashCode(object obj) => RuntimeHelpers.GetHashCode(obj);
     }
 
     public static PropertyBag ObjectToPropertyBag(object obj, string bagName, string bagCategory)
@@ -1254,7 +1248,7 @@ public static class DiagnosticManager
 
         // An explicit Include or Exclude for this property outranks everything else, including
         // an attribute, because it is the most specific thing anyone said about it.
-        if (typeConfiguration?.Find(info)?.Included is bool included)
+        if (typeConfiguration?.Find(info)?.Included is { } included)
         {
             return included;
         }
@@ -1276,7 +1270,7 @@ public static class DiagnosticManager
         // IncludeAll / ExcludeAll, which apply to everything this type did not speak about
         // individually. Placed after the attribute checks so an explicit [Browsable(false)] or
         // [DiagnosticProperty(Ignore = true)] still wins.
-        if (typeConfiguration?.IncludeAll is bool includeAll)
+        if (typeConfiguration?.IncludeAll is { } includeAll)
         {
             return includeAll;
         }
@@ -1890,6 +1884,8 @@ public static class DiagnosticManager
     }
 
     /// <summary>A <see cref="MemoryStream" /> that fails fast once more than <paramref name="maxLength" /> bytes are written, instead of buffering an unbounded write.</summary>
+    // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Local
+    // The limit is the stream's behaviour on every Write, not a check made once at construction.
     private sealed class BoundedMemoryStream(int maxLength) : MemoryStream
     {
         public override void Write(byte[] buffer, int offset, int count)
@@ -2015,6 +2011,8 @@ public static class DiagnosticManager
             bool last = index + 1 == objectPaths.Count;
             try
             {
+                // ReSharper disable once PossibleMultipleEnumeration
+                // currentObjects is replaced by a fresh sequence on every hop and each sequence is enumerated once.
                 current = GetSourceTarget(
                     currentObjects,
                     PropIdent.Parse(path),
@@ -2240,6 +2238,7 @@ public static class DiagnosticManager
         public DrillDownScalarValue(object value) => Value = value;
 
         [DiagnosticProperty]
+        // ReSharper disable once UnusedAutoPropertyAccessor.Local
         public object Value { get; }
     }
 

@@ -21,7 +21,6 @@
 // http://diagexplorer.sourceforge.net/
 
 #endregion
-using System;
 
 namespace DiagnosticExplorer;
 

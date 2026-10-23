@@ -8,7 +8,7 @@ using AwesomeAssertions;
 using Diagnostic.Service.Common;
 using Diagnostic.Service.Hubs;
 using Diagnostic.Service.Transport;
-using DiagnosticExplorer;
+using DiagnosticService.UnitTests.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -19,7 +19,7 @@ using Microsoft.Extensions.Hosting;
 using NSubstitute;
 using Xunit;
 
-namespace DiagnosticService.UnitTests.Hosting;
+namespace DiagnosticService.UnitTests.Hubs;
 
 [Collection(ProcessEnvironmentCollection.Name)]
 public sealed class WebHubInboundJsonTests

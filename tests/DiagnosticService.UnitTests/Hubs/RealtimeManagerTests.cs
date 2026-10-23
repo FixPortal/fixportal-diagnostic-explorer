@@ -356,7 +356,7 @@ public sealed class RealtimeManagerTests
         RealtimeManager manager = new(TimeProvider.System);
         string processA = RegisterProcess(manager, "a");
         string processB = RegisterProcess(manager, "b");
-        manager.AddWebHubClient("web-1", NSubstitute.Substitute.For<IWebHubClient>());
+        manager.AddWebHubClient("web-1", Substitute.For<IWebHubClient>());
 
         (await manager.SetWebClientSubscriptions("web-1", [processA, processB])).Should().BeTrue();
         (await manager.SetWebClientSubscriptions("web-1", [processB])).Should().BeTrue();
@@ -378,7 +378,7 @@ public sealed class RealtimeManagerTests
     {
         RealtimeManager manager = new(TimeProvider.System);
         string processA = RegisterProcess(manager, "a");
-        manager.AddWebHubClient("web-1", NSubstitute.Substitute.For<IWebHubClient>());
+        manager.AddWebHubClient("web-1", Substitute.For<IWebHubClient>());
 
         (await manager.SetWebClientSubscriptions("web-1", [processA])).Should().BeTrue();
         (await manager.SetWebClientSubscriptions("web-1", ["missing"])).Should().BeFalse();
@@ -392,7 +392,7 @@ public sealed class RealtimeManagerTests
         RealtimeManager manager = new(TimeProvider.System);
         string processA = RegisterProcess(manager, "a");
         string processB = RegisterProcess(manager, "b");
-        manager.AddWebHubClient("web-1", NSubstitute.Substitute.For<IWebHubClient>());
+        manager.AddWebHubClient("web-1", Substitute.For<IWebHubClient>());
 
         (await manager.SetWebClientSubscriptions("web-1", [processA, processB])).Should().BeTrue();
         (await manager.SetWebClientSubscriptions("web-1", [])).Should().BeTrue();
@@ -406,12 +406,12 @@ public sealed class RealtimeManagerTests
         RealtimeManager manager = new(TimeProvider.System);
         string processA = RegisterProcess(manager, "a");
         string processB = RegisterProcess(manager, "b");
-        IWebHubClient client = NSubstitute.Substitute.For<IWebHubClient>();
+        IWebHubClient client = Substitute.For<IWebHubClient>();
         var initializedBoth = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var sentAfterRepeatedSets = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var initializationCount = 0;
         client
-            .InitializeLogStream(Arg.Any<string>(), Arg.Any<DiagnosticExplorer.Logging.LogStreamInitialization>())
+            .InitializeLogStream(Arg.Any<string>(), Arg.Any<LogStreamInitialization>())
             .Returns(_ =>
             {
                 if (Interlocked.Increment(ref initializationCount) == 2)
@@ -458,7 +458,7 @@ public sealed class RealtimeManagerTests
         manager.Subscriptions.Single(subscription => subscription.ProcessId == processB).SetDiagnosticClient(agentB);
         var delivered = new ConcurrentQueue<string>();
         var bSentinel = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        IWebHubClient web = NSubstitute.Substitute.For<IWebHubClient>();
+        IWebHubClient web = Substitute.For<IWebHubClient>();
         web.StreamLogEvents(Arg.Any<string>(), Arg.Any<LogStreamEvent[]>())
             .Returns(call =>
             {
@@ -492,7 +492,7 @@ public sealed class RealtimeManagerTests
         RealtimeManager manager = new(TimeProvider.System);
         string processA = RegisterProcess(manager, "a");
         string processB = RegisterProcess(manager, "b");
-        manager.AddWebHubClient("web-1", NSubstitute.Substitute.For<IWebHubClient>());
+        manager.AddWebHubClient("web-1", Substitute.For<IWebHubClient>());
 
         (await manager.SetWebClientSubscriptions("web-1", [processA, processB])).Should().BeTrue();
         (await manager.SubscribeWebClient("web-1", processA)).Should().BeTrue();
@@ -514,7 +514,7 @@ public sealed class RealtimeManagerTests
     {
         RealtimeManager manager = new(TimeProvider.System);
         string processId = RegisterProcess(manager, "a");
-        IWebHubClient client = NSubstitute.Substitute.For<IWebHubClient>();
+        IWebHubClient client = Substitute.For<IWebHubClient>();
         var sendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var allowSend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         client
@@ -553,7 +553,7 @@ public sealed class RealtimeManagerTests
         RealtimeManager manager = new(TimeProvider.System);
         string processId = RegisterProcess(manager, "a");
         string processB = RegisterProcess(manager, "b");
-        IWebHubClient client = NSubstitute.Substitute.For<IWebHubClient>();
+        IWebHubClient client = Substitute.For<IWebHubClient>();
         var sendStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var allowSend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         client
@@ -659,7 +659,7 @@ public sealed class RealtimeManagerTests
         IObservable<LogStreamEvent[]> events
     )
     {
-        IDiagnosticClient client = NSubstitute.Substitute.For<IDiagnosticClient>();
+        IDiagnosticClient client = Substitute.For<IDiagnosticClient>();
         client.LogStreamInitialized.Returns(initializations);
         client.LogStreamEvents.Returns(events);
         client.SubscribeEvents().Returns(Task.CompletedTask);

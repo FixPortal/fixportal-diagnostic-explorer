@@ -22,7 +22,6 @@
 
 #endregion
 
-using System;
 using System.Reflection;
 
 namespace DiagnosticExplorer;
@@ -131,7 +130,7 @@ internal class ExtendedPropertyGetter : PropertyGetter
                     getter.GetProperties(val, bag, newPrepend);
                 }
 
-                if (bag.Categories.FindByName(newPrepend) is Category cat)
+                if (bag.Categories.FindByName(newPrepend) is { } cat)
                 {
                     cat.ValueObject = val;
                 }

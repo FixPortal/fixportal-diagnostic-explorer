@@ -3,7 +3,6 @@ using AwesomeAssertions;
 using Diagnostic.Service.Common;
 using Diagnostic.Service.Hubs;
 using DiagnosticExplorer;
-using Microsoft.AspNetCore.Http.Connections.Client;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;

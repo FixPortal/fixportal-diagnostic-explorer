@@ -40,3 +40,63 @@ dotnet_style_predefined_type_for_member_access = true:error
 # The upstream public API intentionally retains its established names.
 dotnet_diagnostic.IDE1006.severity = none
 resharper_inconsistent_naming_highlighting = none
+
+# The folders under the library projects are organisational; the public types all live in the flat
+# DiagnosticExplorer namespace that consuming applications already import. Moving them to match the
+# folder names would be a breaking change for every consumer.
+[src/DiagnosticExplorer/**/*.cs]
+resharper_check_namespace_highlighting = none
+
+[src/DiagnosticExplorer.Hosting/**/*.cs]
+resharper_check_namespace_highlighting = none
+
+# Public library code guards arguments, options and properties that callers and configuration binders
+# can still set to null despite the nullable annotations. The checks are deliberate, so the three
+# rules that call them redundant are off for the shipped projects only; tests keep them.
+[src/**/*.cs]
+resharper_condition_is_always_true_or_false_according_to_nullable_api_contract_highlighting = none
+resharper_conditional_access_qualifier_is_non_nullable_according_to_api_contract_highlighting = none
+resharper_null_coalescing_condition_is_always_not_null_according_to_api_contract_highlighting = none
+
+# These types are populated and read by reflection or serializers, never by named code, so reachability
+# analysis sees setters and getters nobody calls: the configuration binder, the JSON and SignalR wire
+# contracts, log4net appender properties, attribute named arguments and the ComponentModel demo.
+[src/DiagnosticExplorer/{Configuration,Events,Interface}/*.cs]
+resharper_unused_auto_property_accessor_global_highlighting = none
+
+[src/DiagnosticExplorer/Log4Net/{SmtpAppender,DiagnosticRetroAppender}.cs]
+resharper_unused_auto_property_accessor_global_highlighting = none
+
+[src/DiagnosticExplorer/Props/{CollectionPropertyAttribute,RateSampleEventArgs}.cs]
+resharper_unused_auto_property_accessor_global_highlighting = none
+
+[src/DiagnosticService/Transport/*.cs]
+resharper_unused_auto_property_accessor_global_highlighting = none
+
+[src/DiagnosticService/Hubs/RetroSearchResult.cs]
+resharper_unused_auto_property_accessor_global_highlighting = none
+
+[src/WidgetSample/ComponentModelDemo.cs]
+resharper_unused_auto_property_accessor_global_highlighting = none
+
+# Public members of shared types that applications outside this solution read or set.
+[src/DiagnosticExplorer/Trace/TraceScope.cs]
+resharper_unused_auto_property_accessor_global_highlighting = none
+
+[src/DiagnosticExplorer/Props/PropertyGetter.cs]
+resharper_unused_auto_property_accessor_global_highlighting = none
+
+[src/DiagnosticExplorer/Logging/EventSinkLogEvent.cs]
+resharper_unused_auto_property_accessor_global_highlighting = none
+
+[src/DiagnosticService/Hubs/WebApiUtil.cs]
+resharper_unused_auto_property_accessor_global_highlighting = none
+
+# Fixture types are read by reflection (diagnostic properties), serializers and record equality, and
+# the closures handed to the code under test are awaited before the enclosing using scope ends.
+[tests/**/*.cs]
+resharper_access_to_disposed_closure_highlighting = none
+resharper_unused_member_local_highlighting = none
+resharper_unused_auto_property_accessor_local_highlighting = none
+resharper_unused_auto_property_accessor_global_highlighting = none
+resharper_not_accessed_positional_property_local_highlighting = none

@@ -1,5 +1,3 @@
-using System;
-
 namespace DiagnosticExplorer;
 
 public static class DatePropertyConfiguratorExtensions

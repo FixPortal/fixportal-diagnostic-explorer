@@ -1,6 +1,5 @@
 #if NET5_0_OR_GREATER
 
-using System;
 using Microsoft.AspNetCore.Http.Connections.Client;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

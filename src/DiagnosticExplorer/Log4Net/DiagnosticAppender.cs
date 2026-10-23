@@ -24,8 +24,6 @@
 
 #endregion
 
-using System;
-using DiagnosticExplorer;
 using log4net.Appender;
 using log4net.Core;
 

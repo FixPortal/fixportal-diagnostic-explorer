@@ -575,11 +575,7 @@ public sealed class MongoRetroLoggerIntegrationTests : IClassFixture<MongoRetroL
             };
 
             List<RetroMsg> collected = [];
-            await foreach (
-                RetroMsg[] batch in logger
-                    .GetMessages(query, TestContext.Current.CancellationToken)
-                    .WithCancellation(TestContext.Current.CancellationToken)
-            )
+            await foreach (RetroMsg[] batch in logger.GetMessages(query, TestContext.Current.CancellationToken))
             {
                 collected.AddRange(batch);
             }
@@ -607,7 +603,7 @@ public sealed class MongoRetroLoggerIntegrationTests : IClassFixture<MongoRetroL
     {
         List<RetroMsg> rows = [];
         var batches = 0;
-        await foreach (RetroMsg[] batch in logger.GetMessages(query, cancel).WithCancellation(cancel))
+        await foreach (RetroMsg[] batch in logger.GetMessages(query, cancel))
         {
             batches++;
             rows.AddRange(batch);

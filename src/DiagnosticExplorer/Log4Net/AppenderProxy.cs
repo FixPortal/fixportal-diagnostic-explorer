@@ -1,8 +1,6 @@
-using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Mail;
-using DiagnosticExplorer;
 using log4net.Appender;
 using log4net.Core;
 
@@ -391,6 +389,7 @@ public class AppenderProxy : AppenderProxyBase
     ///     Wraps up an <see cref="IAppender" /> adding extra behaviour to how to handle
     ///     an error while appending
     /// </summary>
+    /// <param name="appenderToWrap">The appender whose failures this proxy contains</param>
     /// <param name="timeout">Duration to wait before attempting to append again after an error</param>
     public AppenderProxy(IAppender appenderToWrap, TimeSpan timeout)
         : base(timeout)

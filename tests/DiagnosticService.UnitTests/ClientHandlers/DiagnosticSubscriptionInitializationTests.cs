@@ -139,6 +139,9 @@ public sealed class DiagnosticSubscriptionInitializationTests
 
         public Task InitializeLogStream(string id, LogStreamInitialization initialization)
         {
+            // ReSharper disable once ConditionalAccessQualifierIsNonNullableAccordingToAPIContract
+            // ReSharper disable once NullCoalescingConditionIsAlwaysNotNullAccordingToAPIContract
+            // ReplayEvents has a public setter, and the point of this stub is to record what actually arrived on the wire.
             _initializationReplayCounts.Enqueue(initialization.ReplayEvents?.Length ?? 0);
             _sends.Enqueue($"init:{id}");
             return Task.CompletedTask;

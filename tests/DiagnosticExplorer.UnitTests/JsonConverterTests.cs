@@ -1,7 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AwesomeAssertions;
-using DiagnosticExplorer;
 using DiagnosticExplorer.Util;
 
 namespace DiagnosticExplorer.UnitTests;

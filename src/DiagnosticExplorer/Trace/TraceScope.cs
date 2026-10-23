@@ -22,16 +22,11 @@
 
 #endregion
 
-using System;
 using System.CodeDom.Compiler;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
 using log4net;
 using ATraceItem = DiagnosticExplorer.TraceItem<DiagnosticExplorer.TraceScope>;
 
@@ -61,13 +56,13 @@ public sealed class TraceScope : IDisposable
     #region Constructors
 
     public TraceScope([CallerMemberName] string name = null)
-        : this(TimeProvider.System, name, null, false) { }
+        : this(TimeProvider.System, name, null) { }
 
     public TraceScope(Action<string> traceMethod, [CallerMemberName] string name = null)
-        : this(TimeProvider.System, name, traceMethod, false) { }
+        : this(TimeProvider.System, name, traceMethod) { }
 
     public TraceScope(string name, Action<string> traceMethod)
-        : this(TimeProvider.System, name, traceMethod, false) { }
+        : this(TimeProvider.System, name, traceMethod) { }
 
     public TraceScope(string name, Action<string> traceMethod, bool forceTrace)
         : this(TimeProvider.System, name, traceMethod, forceTrace) { }

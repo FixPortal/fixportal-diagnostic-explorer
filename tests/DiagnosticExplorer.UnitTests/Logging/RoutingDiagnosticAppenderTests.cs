@@ -287,8 +287,8 @@ public class RoutingDiagnosticAppenderTests
             repository.ConfigureDiagnosticExplorer();
             LogManager.GetLogger(repository.Name, "Widgets").Info("survives");
 
-            hierarchy.Root.Appenders.Cast<IAppender>().Should().Contain(existing);
-            hierarchy.Root.Appenders.Cast<IAppender>().OfType<RoutingDiagnosticAppender>().Should().ContainSingle();
+            hierarchy.Root.Appenders.Should().Contain(existing);
+            hierarchy.Root.Appenders.OfType<RoutingDiagnosticAppender>().Should().ContainSingle();
             existing.GetEvents().Should().ContainSingle();
         }
         finally

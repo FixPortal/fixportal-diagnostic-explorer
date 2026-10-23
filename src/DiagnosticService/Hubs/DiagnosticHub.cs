@@ -2,7 +2,6 @@ using System.Diagnostics;
 using Diagnostic.Service.ClientHandlers;
 using DiagnosticExplorer;
 using DiagnosticExplorer.Logging;
-using DiagnosticExplorer.Util;
 using log4net;
 using Microsoft.AspNetCore.SignalR;
 

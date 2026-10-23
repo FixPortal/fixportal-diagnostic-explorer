@@ -1,16 +1,8 @@
-#nullable enable annotations
-
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
 using DiagnosticExplorer.Logging;
-using DiagnosticExplorer.Util;
 using log4net;
 using Microsoft.AspNetCore.SignalR.Client;
 
@@ -93,10 +85,7 @@ internal sealed class HubServerAdapter : IDiagnosticHubClient, IDisposable
         // typed proxy strips the trailing token from the wire arguments (TypedClientBuilder), so
         // an agent never learns that its caller gave up. The token on IDiagnosticHubClient bounds
         // the SERVICE's wait; the agent always runs the work to completion.
-        _hubConn.On<DiagnosticResponse>(
-            nameof(IDiagnosticHubClient.GetDiagnostics),
-            () => GetDiagnostics(CancellationToken.None)
-        );
+        _hubConn.On(nameof(IDiagnosticHubClient.GetDiagnostics), () => GetDiagnostics(CancellationToken.None));
 
         _hubConn.On<DrillDownRequest, DrillDownResponse>(
             nameof(IDiagnosticHubClient.GetDrillDown),
@@ -473,7 +462,7 @@ internal sealed class HubServerAdapter : IDiagnosticHubClient, IDisposable
                     continue;
                 }
 
-                System.Diagnostics.Trace.TraceWarning(
+                Trace.TraceWarning(
                     "HubServerAdapter.SendEventStream: the log event subscription was dropped, most "
                         + "likely because events were published faster than they could be delivered. "
                         + "Re-subscribing; events published during the gap are recovered from the "
@@ -487,14 +476,14 @@ internal sealed class HubServerAdapter : IDiagnosticHubClient, IDisposable
         }
         catch (OperationCanceledException)
         {
-            System.Diagnostics.Trace.TraceInformation("HubServerAdapter.SendEventStream cancelled");
+            Trace.TraceInformation("HubServerAdapter.SendEventStream cancelled");
         }
         catch (Exception ex)
         {
             // A non-cancellation fault here ends event delivery to this client. The task is launched
             // fire-and-forget (Task.Run in SubscribeEvents; the disposal continuation discards it), so
             // without this catch the exception would go unobserved. Surface it rather than swallow it.
-            System.Diagnostics.Trace.TraceError($"HubServerAdapter.SendEventStream failed: {ex}");
+            Trace.TraceError($"HubServerAdapter.SendEventStream failed: {ex}");
         }
     }
 

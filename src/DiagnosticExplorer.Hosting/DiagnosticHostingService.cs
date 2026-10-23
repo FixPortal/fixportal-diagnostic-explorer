@@ -1,10 +1,6 @@
-using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
 using DiagnosticExplorer.Log4Net;
 using log4net;
 using Microsoft.AspNetCore.Http.Connections.Client;
@@ -65,7 +61,8 @@ public class DiagnosticHostingService
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(_options.Uri))
+            string? uri = _options.Uri;
+            if (string.IsNullOrWhiteSpace(uri))
             {
                 _log.Warn("DiagnosticHostingService not started: no Uri configured");
                 return false;
@@ -82,7 +79,7 @@ public class DiagnosticHostingService
             };
 
             var handlers = Regex
-                .Split(_options.Uri, @"\s|;|,", RegexOptions.None, TimeSpan.FromSeconds(1))
+                .Split(uri, @"\s|;|,", RegexOptions.None, TimeSpan.FromSeconds(1))
                 .Select(hubUrl => hubUrl.Trim())
                 .Where(hubUrl => !string.IsNullOrWhiteSpace(hubUrl))
                 .Select(hubUrl => new RegistrationHandler(hubUrl, registration, _options.ApiKey, _serviceProvider))

@@ -1,12 +1,7 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
-using DiagnosticExplorer.Util;
 using log4net;
 using MessagePack;
 using MessagePack.Resolvers;
@@ -253,6 +248,8 @@ public class RegistrationHandler
                     // "Authorization: Bearer <key>" on negotiate and "access_token" on the WS upgrade.
                     if (!string.IsNullOrEmpty(_apiKey))
                     {
+                        // ReSharper disable once RedundantTypeArgumentsOfMethod
+                        // The type argument states the nullable delegate return type; inferring it gives Task<string>, which the compiler rejects.
                         options.AccessTokenProvider = () => Task.FromResult<string?>(_apiKey);
                     }
                 }
@@ -322,9 +319,7 @@ public class RegistrationHandler
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Trace.TraceError(
-                "RegistrationHandler.DisposeConnection HubServerAdapter.Dispose: " + ex
-            );
+            Trace.TraceError("RegistrationHandler.DisposeConnection HubServerAdapter.Dispose: " + ex);
         }
 
         if (taken.Connection == null)
@@ -341,9 +336,7 @@ public class RegistrationHandler
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Trace.TraceError(
-                "RegistrationHandler.DisposeConnection HubConnection.DisposeAsync: " + ex
-            );
+            Trace.TraceError("RegistrationHandler.DisposeConnection HubConnection.DisposeAsync: " + ex);
         }
     }
 

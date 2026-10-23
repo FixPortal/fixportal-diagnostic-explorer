@@ -1,9 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Net.Mail;
-using DiagnosticExplorer;
 using log4net.Appender;
 using log4net.Core;
 using log4net.Layout;

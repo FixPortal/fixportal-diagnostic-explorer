@@ -1,5 +1,4 @@
 using AwesomeAssertions;
-using DiagnosticExplorer;
 
 // Properties in the nested fixtures are consumed through reflection by DiagnosticManager.
 // ReSharper disable UnusedMember.Local

@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using DiagnosticExplorer.Logging;
 using log4net.Appender;
 using log4net.Core;
@@ -34,6 +32,8 @@ public class RoutingDiagnosticAppender : AppenderSkeleton
         _eventStore = eventStore ?? DiagnosticManager.LogEventStore;
         PatternLayout layout = new("%-4timestamp [%thread] %-5level %logger %ndc - %message%newline");
         layout.ActivateOptions();
+        // ReSharper disable once VirtualMemberCallInConstructor
+        // log4net declares Layout virtual and the base constructor leaves it unset; assigning it here is the documented way to install a layout.
         Layout = layout;
     }
 
@@ -81,6 +81,8 @@ public class RoutingDiagnosticAppender : AppenderSkeleton
             ActivateOptions();
         }
         LogLevel level = (LogLevel)loggingEvent.Level.ToMicrosoftOrdinal();
+        // ReSharper disable once PossibleNullReferenceException
+        // Only null when the appender is closed, and the branch above returns in that case.
         if (!_router.IsEnabled(loggingEvent.LoggerName, level))
         {
             return;

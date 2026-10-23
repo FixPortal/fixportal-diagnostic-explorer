@@ -1,5 +1,4 @@
 using AwesomeAssertions;
-using DiagnosticExplorer;
 using DiagnosticExplorer.Logging;
 using DiagnosticExplorer.NLog;
 using NLog;
@@ -154,8 +153,9 @@ public class DiagnosticExplorerTargetTests
             returned.Should().BeSameAs(configuration);
             configuration.FindTargetByName("DiagnosticExplorer").Should().NotBeNull();
             int before = DiagnosticManager.LogEventStore.CreateInitialization().ReplayEvents.Length;
-            using (LogFactory factory = new() { Configuration = configuration })
+            using (LogFactory factory = new())
             {
+                factory.Configuration = configuration;
                 factory.GetLogger("Widgets").Info("Painted");
             }
 

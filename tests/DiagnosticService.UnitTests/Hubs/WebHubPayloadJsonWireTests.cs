@@ -4,7 +4,6 @@ using Diagnostic.Service.Hubs;
 using DiagnosticExplorer;
 using DiagnosticExplorer.Logging;
 using DiagnosticService.UnitTests.Hosting;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -33,7 +32,7 @@ public sealed class WebHubPayloadJsonWireTests
         );
         using var callback = connection.On<string, JsonElement>(
             "ShowDiagnostics",
-            (id, payload) => received.TrySetResult((id, payload.Clone()))
+            (callbackId, callbackPayload) => received.TrySetResult((callbackId, callbackPayload.Clone()))
         );
         await StartReadyAsync(connection);
 
@@ -52,7 +51,7 @@ public sealed class WebHubPayloadJsonWireTests
                                 {
                                     Properties =
                                     [
-                                        new DiagnosticExplorer.Property("queue-A", "17", "pending-A")
+                                        new Property("queue-A", "17", "pending-A")
                                         {
                                             OperationSet = "actions-A",
                                             CanSet = true,
@@ -119,7 +118,7 @@ public sealed class WebHubPayloadJsonWireTests
         );
         using var callback = connection.On<string, JsonElement>(
             "InitializeLogStream",
-            (id, payload) => received.TrySetResult((id, payload.Clone()))
+            (callbackId, callbackPayload) => received.TrySetResult((callbackId, callbackPayload.Clone()))
         );
         await StartReadyAsync(connection);
 
@@ -204,7 +203,7 @@ public sealed class WebHubPayloadJsonWireTests
         );
         using var callback = connection.On<string, JsonElement>(
             "StreamLogEvents",
-            (id, payload) => received.TrySetResult((id, payload.Clone()))
+            (callbackId, callbackPayload) => received.TrySetResult((callbackId, callbackPayload.Clone()))
         );
         await StartReadyAsync(connection);
         await Client(factory, connection)

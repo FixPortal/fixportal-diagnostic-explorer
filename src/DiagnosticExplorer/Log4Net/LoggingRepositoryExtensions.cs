@@ -27,9 +27,9 @@ public static class LoggingRepositoryExtensions
         };
         replacement.ActivateOptions();
 
-        IAppender previous = hierarchy
-            .Root.Appenders.Cast<IAppender>()
-            .FirstOrDefault(appender => appender.Name == AppenderName && appender is RoutingDiagnosticAppender);
+        IAppender previous = hierarchy.Root.Appenders.FirstOrDefault(appender =>
+            appender.Name == AppenderName && appender is RoutingDiagnosticAppender
+        );
         if (previous != null)
         {
             _ = hierarchy.Root.RemoveAppender(previous);

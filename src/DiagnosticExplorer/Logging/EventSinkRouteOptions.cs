@@ -45,10 +45,15 @@ public sealed class RouteValueConverter : TypeConverter
         return sourceType == typeof(string) || base.CanConvertFrom(context, sourceType);
     }
 
+    // ReSharper disable NullnessAnnotationConflictWithJetBrainsAnnotations
+    // ReSharper disable AssignNullToNotNullAttribute
+    // ReSharper's bundled annotations for TypeConverter.ConvertFrom disagree with the nullable annotations on the BCL signature this override mirrors.
     public override object? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
     {
         return value is string text ? RouteValue.Fixed(text) : base.ConvertFrom(context, culture, value);
     }
+    // ReSharper restore AssignNullToNotNullAttribute
+    // ReSharper restore NullnessAnnotationConflictWithJetBrainsAnnotations
 }
 
 /// <summary>
@@ -164,6 +169,9 @@ public sealed class EventSinkDestinationConverter : TypeConverter
         return sourceType == typeof(string) || base.CanConvertFrom(context, sourceType);
     }
 
+    // ReSharper disable NullnessAnnotationConflictWithJetBrainsAnnotations
+    // ReSharper disable AssignNullToNotNullAttribute
+    // ReSharper's bundled annotations for TypeConverter.ConvertFrom disagree with the nullable annotations on the BCL signature this override mirrors.
     public override object? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
     {
         if (value is not string destination)
@@ -183,4 +191,6 @@ public sealed class EventSinkDestinationConverter : TypeConverter
             SinkName = RouteValue.Fixed(parts[1].Trim()),
         };
     }
+    // ReSharper restore AssignNullToNotNullAttribute
+    // ReSharper restore NullnessAnnotationConflictWithJetBrainsAnnotations
 }

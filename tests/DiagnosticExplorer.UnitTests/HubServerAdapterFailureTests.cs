@@ -1,7 +1,6 @@
 using System.Net;
 using System.Reflection;
 using AwesomeAssertions;
-using DiagnosticExplorer;
 using DiagnosticExplorer.Logging;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.SignalR.Client;

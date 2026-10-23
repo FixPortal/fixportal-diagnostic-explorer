@@ -1,9 +1,7 @@
 using System.Reactive.Subjects;
 using Diagnostic.Service.Common;
-using Diagnostic.Service.Hubs;
 using DiagnosticExplorer;
 using DiagnosticExplorer.Logging;
-using DiagnosticExplorer.Util;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Diagnostic.Service.ClientHandlers;

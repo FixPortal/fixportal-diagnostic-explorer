@@ -20,6 +20,8 @@ public interface IDiagnosticClient
     ///     The operator action this is an attempt at. A retry carrying the same id joins the
     ///     first attempt on the agent rather than running the body a second time.
     /// </param>
+    /// <param name="path">The property to set, as a path within the diagnostics tree.</param>
+    /// <param name="value">The new value, as text, or null to clear it.</param>
     Task<OperationResponse> SetProperty(string requestId, string[] objectPaths, string path, string? value);
     Task<OperationResponse> ExecuteOperation(
         string requestId,

@@ -56,6 +56,9 @@ internal static class DiagnosticExplorerLogDetail
         return detail.Length == 0 ? null : detail.ToString().TrimEnd();
     }
 
+    /// <param name="detail">The builder the rendered state is appended to.</param>
+    /// <param name="state">The log state or scope to render.</param>
+    /// <param name="prefix">The label written before each rendered entry.</param>
     /// <param name="includeScalar">
     ///     Whether a state that is not a property list is worth recording as a bare value.
     ///     <c>BeginScope("RequestId=7")</c> is a normal thing to write and its correlation value is

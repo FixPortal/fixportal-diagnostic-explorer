@@ -22,7 +22,6 @@
 
 #endregion
 
-using System;
 using System.Text.Json.Serialization;
 using DiagnosticExplorer.Util;
 

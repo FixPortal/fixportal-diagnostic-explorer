@@ -5,7 +5,6 @@ using Diagnostic.Service.Common;
 using Diagnostic.Service.Hubs;
 using DiagnosticExplorer;
 using DiagnosticService.UnitTests.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -19,7 +18,7 @@ namespace DiagnosticService.UnitTests.Hubs;
 ///     case-insensitive property names) against an in-process server, and inspects the raw
 ///     deserialized <see cref="JsonElement" /> payloads — so a DTO property rename or an enum
 ///     encoding change that still compiles is caught here even though it would still deserialize
-///     into a same-shaped .NET client. The separate agent channel (<see cref="AgentChannelWireTests" />)
+///     into a same-shaped .NET client. The separate agent channel (<c>AgentChannelWireTests</c>)
 ///     speaks MessagePack, not this JSON protocol, and is not evidence for this boundary.
 /// </summary>
 [Collection(ProcessEnvironmentCollection.Name)]

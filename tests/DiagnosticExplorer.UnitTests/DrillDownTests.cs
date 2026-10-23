@@ -244,10 +244,10 @@ public sealed class DrillDownTests : IDisposable
 
     /// <summary>
     ///     adversarial-review 20260912T091500Z, H2: <c>GetBagTarget</c> used to gate
-    ///     <see cref="DrillDownAccess.Json" /> on the same <c>CanDrillDown</c> check as ordinary
+    ///     <c>DrillDownAccess.Json</c> on the same <c>CanDrillDown</c> check as ordinary
     ///     inspection, so any bag reachable by drilldown had its whole public object graph
     ///     JSON-serializable regardless of whether any property on it was ever opted into
-    ///     <c>WithJsonHover()</c> -- exactly the exposure <see cref="GetPropertyTarget" />'s
+    ///     <c>WithJsonHover()</c> -- exactly the exposure <c>GetPropertyTarget</c>'s
     ///     separate <c>CanJsonHover</c> check exists to prevent one level up.
     /// </summary>
     [Fact]

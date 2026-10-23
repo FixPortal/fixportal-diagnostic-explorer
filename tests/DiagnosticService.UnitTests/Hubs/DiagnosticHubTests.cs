@@ -1,9 +1,7 @@
-using System.Reflection;
 using AwesomeAssertions;
 using Diagnostic.Service.Common;
 using Diagnostic.Service.Hubs;
 using DiagnosticExplorer;
-using DiagnosticExplorer.Util;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -18,7 +16,7 @@ namespace DiagnosticService.UnitTests.Hubs;
 ///     throwing downstream call must surface as <c>RpcResult.Fail</c> carrying the message, not as
 ///     a thrown exception that faults the hub invocation (and, under SignalR's default detailed
 ///     errors off, tells the caller nothing). Second, the three <c>*Return</c> callbacks must route
-///     replies into the shared <see cref="AsyncResultBucket" /> by request id. (DE-23)
+///     replies into the shared <c>AsyncResultBucket</c> by request id. (DE-23)
 /// </summary>
 /// <remarks>
 ///     RealtimeManager and RetroManager are concrete collaborators with non-virtual members, so

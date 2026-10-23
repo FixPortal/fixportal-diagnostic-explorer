@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using AwesomeAssertions;
 
 // Properties in the nested fixtures are consumed through reflection by DiagnosticManager.

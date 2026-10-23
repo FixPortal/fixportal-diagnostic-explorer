@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using DiagnosticExplorer;
 using log4net.Core;
 
 namespace DiagnosticExplorer.Log4Net;

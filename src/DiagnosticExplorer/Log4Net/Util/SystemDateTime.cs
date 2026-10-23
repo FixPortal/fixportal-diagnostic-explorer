@@ -1,5 +1,3 @@
-using System;
-
 namespace DiagnosticExplorer.Log4Net;
 
 /// <summary>

@@ -22,11 +22,8 @@
 
 #endregion
 
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using log4net.Core;
 
 namespace DiagnosticExplorer;

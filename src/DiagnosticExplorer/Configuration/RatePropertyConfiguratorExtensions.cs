@@ -1,6 +1,3 @@
-using System;
-using DiagnosticExplorer.Logging;
-
 namespace DiagnosticExplorer;
 
 public static class RatePropertyConfiguratorExtensions

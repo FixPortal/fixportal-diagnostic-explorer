@@ -1,6 +1,5 @@
 using AwesomeAssertions;
 using DiagnosticExplorer.Logging;
-using Microsoft.Extensions.Logging;
 
 // Fixture properties are consumed through reflection by DiagnosticManager.
 // ReSharper disable UnusedMember.Local

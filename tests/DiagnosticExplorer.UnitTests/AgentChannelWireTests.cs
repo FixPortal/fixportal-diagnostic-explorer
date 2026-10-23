@@ -1,11 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using AwesomeAssertions;
-using DiagnosticExplorer;
+﻿using AwesomeAssertions;
 using MessagePack;
 using MessagePack.Resolvers;
-using Xunit;
 
 namespace DiagnosticExplorer.UnitTests;
 
@@ -61,7 +56,7 @@ public class AgentChannelWireTests
 
         restored.PropertyBags.Should().ContainSingle(because: $"a host with {shape} must reach the service");
         restored.PropertyBags[0].Name.Should().Be("svc");
-        restored.PropertyBags[0].GetProperty("Name", null)!.Value.Should().Be("host");
+        restored.PropertyBags[0].GetProperty("Name")!.Value.Should().Be("host");
     }
 
     /// <summary>

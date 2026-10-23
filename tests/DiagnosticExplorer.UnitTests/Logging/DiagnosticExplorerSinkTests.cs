@@ -1,5 +1,4 @@
 using AwesomeAssertions;
-using DiagnosticExplorer;
 using DiagnosticExplorer.Logging;
 using DiagnosticExplorer.Serilog;
 using Serilog;

@@ -3,7 +3,6 @@ using System.Reactive.Subjects;
 using System.Reflection;
 using System.Threading.Channels;
 using AwesomeAssertions;
-using DiagnosticExplorer;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.SignalR.Protocol;

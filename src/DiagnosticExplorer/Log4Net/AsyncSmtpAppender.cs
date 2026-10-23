@@ -1,5 +1,3 @@
-using System;
-using DiagnosticExplorer;
 using log4net.Core;
 
 namespace DiagnosticExplorer.Log4Net;

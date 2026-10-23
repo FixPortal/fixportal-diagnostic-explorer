@@ -1,6 +1,5 @@
 using AwesomeAssertions;
 using Diagnostic.Service.ClientHandlers;
-using Diagnostic.Service.Hubs;
 using DiagnosticExplorer;
 using DiagnosticExplorer.Logging;
 using Microsoft.AspNetCore.SignalR;
@@ -26,7 +25,7 @@ public class DiagnosticClientHandlerTests
     public async Task GetDiagnostics_WhenTheCallerCancelsMidFlight_CancelsTheInvocation()
     {
         var client = Substitute.For<IDiagnosticHubClient>();
-        client.GetDiagnostics(Arg.Any<CancellationToken>()).Returns(_ => NeverCompletes(_));
+        client.GetDiagnostics(Arg.Any<CancellationToken>()).Returns(call => NeverCompletes(call));
 
         using var handler = new DiagnosticClientHandler(CallerContext(), client);
         using CancellationTokenSource caller = new();
@@ -45,7 +44,7 @@ public class DiagnosticClientHandlerTests
     public async Task GetDiagnostics_WhenTheCallerHasAlreadyCancelled_Throws()
     {
         var client = Substitute.For<IDiagnosticHubClient>();
-        client.GetDiagnostics(Arg.Any<CancellationToken>()).Returns(_ => NeverCompletes(_));
+        client.GetDiagnostics(Arg.Any<CancellationToken>()).Returns(call => NeverCompletes(call));
 
         using var handler = new DiagnosticClientHandler(CallerContext(), client);
         using CancellationTokenSource caller = new();
@@ -73,7 +72,7 @@ public class DiagnosticClientHandlerTests
     public async Task GetDiagnostics_WhenTheAgentNeverCompletes_ReportsATimeoutNotACancellation()
     {
         var client = Substitute.For<IDiagnosticHubClient>();
-        client.GetDiagnostics(Arg.Any<CancellationToken>()).Returns(_ => NeverCompletes(_));
+        client.GetDiagnostics(Arg.Any<CancellationToken>()).Returns(call => NeverCompletes(call));
 
         using var handler = new DiagnosticClientHandler(CallerContext(), client, TimeSpan.FromMilliseconds(20));
 

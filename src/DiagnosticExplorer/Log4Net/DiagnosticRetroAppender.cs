@@ -1,9 +1,7 @@
 #nullable enable annotations
 
-using System;
 using System.Diagnostics;
 using System.Reflection;
-using DiagnosticExplorer;
 using log4net.Appender;
 using log4net.Core;
 

@@ -24,11 +24,7 @@
 
 #endregion
 
-using System;
 using System.Diagnostics;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace DiagnosticExplorer;
 
@@ -219,7 +215,7 @@ public class RateCounter
         public void Start(TimeProvider timeProvider)
         {
             _timer = timeProvider.CreateTimer(
-                static state => ((CounterTimerState)state).Tick(),
+                static state => ((CounterTimerState?)state)?.Tick(),
                 this,
                 SampleInterval,
                 SampleInterval

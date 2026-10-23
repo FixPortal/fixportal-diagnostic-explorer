@@ -141,7 +141,7 @@ public sealed class LogEventStore
         return contribution;
     }
 
-    internal void RemoveRoutingContribution(RoutingContribution contribution)
+    internal void RemoveRoutingContribution(RoutingContribution? contribution)
     {
         if (contribution == null)
         {
@@ -245,13 +245,6 @@ public sealed class LogEventStore
         }
     }
 
-    /// <summary>Opens a live subscription, with a snapshot of everything retained so far.</summary>
-    /// <param name="liveSubscriptionCapacity">
-    ///     How many events may queue for this subscriber before it is dropped. Defaults to this
-    ///     store's own retention, so a subscriber can fall a whole window behind and still be
-    ///     recoverable from the next snapshot; a fixed default smaller than the window would drop
-    ///     subscribers a host had explicitly configured to keep more.
-    /// </param>
     /// <summary>
     ///     Ends every live subscription so its reader re-subscribes and picks up the new routing.
     /// </summary>
@@ -273,6 +266,13 @@ public sealed class LogEventStore
         }
     }
 
+    /// <summary>Opens a live subscription, with a snapshot of everything retained so far.</summary>
+    /// <param name="liveSubscriptionCapacity">
+    ///     How many events may queue for this subscriber before it is dropped. Defaults to this
+    ///     store's own retention, so a subscriber can fall a whole window behind and still be
+    ///     recoverable from the next snapshot; a fixed default smaller than the window would drop
+    ///     subscribers a host had explicitly configured to keep more.
+    /// </param>
     public LogEventStoreSubscription CreateSubscription(int? liveSubscriptionCapacity = null)
     {
         if (liveSubscriptionCapacity is <= 0)
@@ -346,7 +346,11 @@ public sealed class LogEventStore
         EventSinkRouteMatchMode? matchMode = null;
         foreach (
             EventSinkRouteMatchMode candidate in sources
-                .Where(source => source.Routes?.Count > 0)
+                .Where(source =>
+                    // ReSharper disable once ConstantConditionalAccessQualifier
+                    // Routes and Destinations have public setters, so a caller can still assign null despite the annotation.
+                    source.Routes?.Count > 0
+                )
                 .Select(source => source.MatchMode)
         )
         {
@@ -483,6 +487,8 @@ public static class LogStreamRoutingConfigurationExtensions
             MatchMode = options.MatchMode,
             Routes =
             [
+                // ReSharper disable once ConstantNullCoalescingCondition
+                // Routes and Destinations have public setters, so a caller can still assign null despite the annotation.
                 .. (options.Routes ?? []).Select(
                     (route, index) =>
                         new LogStreamRoute
@@ -498,6 +504,8 @@ public static class LogStreamRoutingConfigurationExtensions
                             StopProcessing = route.StopProcessing,
                             Destinations =
                             [
+                                // ReSharper disable once ConstantNullCoalescingCondition
+                                // Routes and Destinations have public setters, so a caller can still assign null despite the annotation.
                                 .. (route.Destinations ?? []).Select(destination => new LogStreamRouteDestination
                                 {
                                     Category = destination.SinkCategory.ToSnapshot(),
@@ -522,6 +530,8 @@ public static class LogStreamRoutingConfigurationExtensions
             MatchMode = routing.MatchMode,
             Routes =
             [
+                // ReSharper disable once ConstantNullCoalescingCondition
+                // Routes and Destinations have public setters, so a caller can still assign null despite the annotation.
                 .. (routing.Routes ?? []).Select(route => new LogStreamRoute
                 {
                     Order = route.Order,
@@ -532,6 +542,8 @@ public static class LogStreamRoutingConfigurationExtensions
                     StopProcessing = route.StopProcessing,
                     Destinations =
                     [
+                        // ReSharper disable once ConstantNullCoalescingCondition
+                        // Routes and Destinations have public setters, so a caller can still assign null despite the annotation.
                         .. (route.Destinations ?? []).Select(destination => new LogStreamRouteDestination
                         {
                             Category = destination.Category.ToSnapshot(),

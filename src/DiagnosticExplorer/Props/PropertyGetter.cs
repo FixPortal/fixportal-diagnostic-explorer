@@ -22,13 +22,8 @@
 
 #endregion
 
-using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Collections.Specialized;
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
-using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using DiagnosticExplorer.Util;
@@ -108,7 +103,7 @@ internal class PropertyGetter
             if (applyAttributes)
             {
                 DiagnosticClassAttribute classAttr = propInfo
-                    .DeclaringType.GetCustomAttributes(typeof(DiagnosticClassAttribute), true)
+                    .DeclaringType?.GetCustomAttributes(typeof(DiagnosticClassAttribute), true)
                     .Cast<DiagnosticClassAttribute>()
                     .FirstOrDefault();
 
@@ -121,8 +116,8 @@ internal class PropertyGetter
             if (propAttr != null)
             {
                 Name = propAttr.Name ?? Name;
-                Category = propAttr.Category ?? Category;
-                Description = propAttr.Description ?? Description;
+                Category = propAttr.Category;
+                Description = propAttr.Description;
                 FormatString = propAttr.FormatString;
                 if (propInfo.CanWrite && propAttr.AllowSetSpecified)
                 {
@@ -130,7 +125,7 @@ internal class PropertyGetter
                 }
             }
         }
-        else if (configuration != null)
+        else
         {
             GetFunc = configuration.Value;
             Name = configuration.Name.Value;
@@ -247,7 +242,7 @@ internal class PropertyGetter
                 propInfo.Name,
                 ex.Message
             );
-            return obj => msg;
+            return _ => msg;
         }
     }
 
@@ -255,12 +250,7 @@ internal class PropertyGetter
 
     protected static string MaxLengthString(string s, int maxLength)
     {
-        if (s == null)
-        {
-            return s;
-        }
-
-        if (s.Length <= maxLength)
+        if (s == null || s.Length <= maxLength)
         {
             return s;
         }
@@ -526,6 +516,8 @@ internal class PropertyGetter
         {
             maxItems = MaxConcatItems;
         }
+        // ReSharper disable PossibleMultipleEnumeration
+        // TryGetCount reads a Count and never enumerates, and the two Cast calls below sit in mutually exclusive branches.
         int count = TryGetCount(col);
         List<object> asObject;
         int remaining;
@@ -539,6 +531,7 @@ internal class PropertyGetter
         else
         {
             asObject = [.. col.Cast<object>().Take(maxItems + 1)];
+            // ReSharper restore PossibleMultipleEnumeration
             if (asObject.Count > maxItems)
             {
                 remaining = 1;

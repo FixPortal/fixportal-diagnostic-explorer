@@ -1,13 +1,9 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text.Json;
 using DiagnosticExplorer.Logging;
-using Microsoft.Extensions.Logging;
 
 namespace DiagnosticExplorer;
 
@@ -211,6 +207,9 @@ public sealed class DiagnosticRuntimeOptions : IDiagnosticHostingConfigurator
     ///     must not overwrite it unless the configuration says something about it.
     /// </summary>
     internal bool EnabledIsSet { get; private set; }
+
+    // ReSharper disable once CollectionNeverQueried.Global
+    // Filled by the configuration binder through reflection, then read by the host registration code outside this assembly.
     public List<DiagnosticHostOptions> Hosts { get; } = [];
     public EventRetentionOptions EventRetention { get; } = new();
     public SystemEnvironmentOptions SystemEnvironment { get; } = new();
@@ -445,7 +444,7 @@ internal sealed class DiagnosticConfigurationSnapshot
 internal sealed class TypeConfigurator<T> : ITypeConfigurator<T>
 {
     private readonly TypeConfiguration _configuration;
-    private readonly System.Threading.AsyncLocal<CategoryScope> _categoryScope = new();
+    private readonly AsyncLocal<CategoryScope> _categoryScope = new();
 
     public TypeConfigurator(TypeConfiguration configuration)
     {
@@ -664,11 +663,11 @@ internal sealed class TypeConfigurator<T> : ITypeConfigurator<T>
 
     private sealed class CategoryScope : ICategoryScope
     {
-        private readonly System.Threading.AsyncLocal<CategoryScope> _scope;
+        private readonly AsyncLocal<CategoryScope> _scope;
         private readonly CategoryScope _previous;
         private bool _disposed;
 
-        public CategoryScope(System.Threading.AsyncLocal<CategoryScope> scope, string category)
+        public CategoryScope(AsyncLocal<CategoryScope> scope, string category)
         {
             _scope = scope;
             _previous = scope.Value;
@@ -1992,6 +1991,11 @@ internal static class ExpressionProperty
             throw new ArgumentNullException(nameof(expression));
         }
 
+        if (expectedDeclaringType == null)
+        {
+            throw new ArgumentNullException(nameof(expectedDeclaringType));
+        }
+
         Expression body = expression.Body;
         while (
             body is UnaryExpression unary
@@ -2009,7 +2013,7 @@ internal static class ExpressionProperty
             throw new ArgumentException("The expression must select a direct property.", nameof(expression));
         }
 
-        if (!property.DeclaringType.IsAssignableFrom(expectedDeclaringType))
+        if (property.DeclaringType?.IsAssignableFrom(expectedDeclaringType) != true)
         {
             throw new ArgumentException(
                 $"Property '{property.Name}' is not declared on '{expectedDeclaringType.Name}'.",
@@ -2032,6 +2036,11 @@ internal static class ExpressionProperty
             throw new ArgumentNullException(nameof(expression));
         }
 
+        if (expectedDeclaringType == null)
+        {
+            throw new ArgumentNullException(nameof(expectedDeclaringType));
+        }
+
         Expression body = expression.Body;
         while (
             body is UnaryExpression unary
@@ -2050,7 +2059,7 @@ internal static class ExpressionProperty
             return false;
         }
 
-        if (!candidate.DeclaringType.IsAssignableFrom(expectedDeclaringType))
+        if (candidate.DeclaringType?.IsAssignableFrom(expectedDeclaringType) != true)
         {
             throw new ArgumentException(
                 $"Field '{candidate.Name}' is not declared on '{expectedDeclaringType.Name}'.",

@@ -1,5 +1,3 @@
-using System;
-
 namespace DiagnosticExplorer;
 
 public class DiagnosticMsg

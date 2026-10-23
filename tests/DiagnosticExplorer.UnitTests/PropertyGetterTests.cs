@@ -1,7 +1,5 @@
 using System.Collections;
 using AwesomeAssertions;
-using DiagnosticExplorer;
-using DiagnosticExplorer.Util;
 using MessagePack;
 using MessagePack.Resolvers;
 

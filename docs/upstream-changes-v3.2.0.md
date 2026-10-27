@@ -1,7 +1,13 @@
 # DiagnosticExplorer — changes since the last upstream acceptance (→ v3.2.0)
 
-**Baseline:** `da97212` (`Merge pull request #2 from DestructiveDude/main`) — the current tip of
-`upstream/main` (cell001nz/diagnostic-explorer) and the merge-base with this fork.
+> Historical snapshot, written at fork commit `353aecf`. Figures below (test counts, Angular 21,
+> Angular Material/PrimeNG state) describe that commit. Since then the dashboard moved to Angular 22
+> (`diagnostics-web/package.json`, `@angular/core` `^22.2.1`) and the fork released `v4.0.0`
+> (see `docs/releases/4.0.0.md`). `upstream/main` has also moved on from `da97212` to `f8dbb59`
+> (the baseline recorded in `docs/upstream-integration-status.md`).
+
+**Baseline:** `da97212` (`Merge pull request #2 from DestructiveDude/main`) — the tip of
+`upstream/main` (cell001nz/diagnostic-explorer) when this was written, and still the merge-base with this fork.
 **Head:** `FixPortal/diagnostic-explorer` `main` at the time of this document (`353aecf`),
 including the post-`3.2.1` `TreatWarningsAsErrors` follow-up, the Code Quality pass + CI action
 currency (Part 3c), two further adversarial-review passes (Parts 3d–3e), the public-API surface
@@ -452,8 +458,8 @@ force today.
 
 The audit's two service-security Highs were that the SignalR hubs expose mutating/reflective
 operations with **no authentication** (H1) and that CORS **reflects any origin with credentials**
-(H2). A mandatory fix would break every existing diagnostic client, the Angular SPA, and the EMS
-nupkg consumer flow on the day of deploy. So this ships as **opt-in**, with a phased zero-break
+(H2). A mandatory fix would break every existing diagnostic client, the Angular SPA, and the downstream
+package consumer flow on the day of deploy. So this ships as **opt-in**, with a phased zero-break
 rollout (design recorded in `docs/security/hub-authentication-proposal.md`).
 
 **Configuration** (`DiagServiceSettings.Security`): `AuthMode` (`None` default == today | `ApiKey`),
@@ -501,7 +507,7 @@ confirmed findings were hardened:
 - **Package version:** the headline release is **3.2.0** (git tag + Docker image). The internal
   NuGet repackaged with the post-tag defect fixes (Part 3b) is **3.2.1**; the further review-pass
   fixes and the PublicApiAnalyzers tooling (Parts 3d–3f) are **3.2.2**. (The PublicApiAnalyzers
-  gate of Part 3f was later removed — see Part 3f.) The EMS consumer picks up
+  gate of Part 3f was later removed — see Part 3f.) The downstream consumer picks up
   each version via the existing local-feed nupkg flow. Neither `3.2.0` nor `3.1.38` is reused.
 - **Deferred, with rationale (not regressions):** Tailwind `important: true` (a visual-specificity
   change that needs a running-app pass, not a blind edit; the deprecated `~` SCSS import and the
@@ -566,7 +572,7 @@ above. So the proposal is **document-first, then PRs shaped to your appetite**:
 - `gh pr create` on this fork defaults its base to the `cell001nz` upstream remote — for an upstream
   PR that is what we want; just confirm the base shows `cell001nz/diagnostic-explorer:main`, not the
   FixPortal origin, before submitting.
-- The internal NuGet repackage (`3.2.1`) and the EMS rollout are FixPortal-side distribution steps
+- The internal NuGet repackage (`3.2.1`) and the consumer rollout are FixPortal-side distribution steps
   and are **not** part of any upstream PR.
 
 ---

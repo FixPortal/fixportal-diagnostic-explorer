@@ -49,13 +49,18 @@ so be explicit about what ApiKey mode does and does not provide:
 
 ## Constraint
 
-The fix **must not break existing trusted-network deployments** or the EMS consumer
+The fix **must not break existing trusted-network deployments** or the downstream consumer
 flow. Diagnostic clients (`DiagnosticExplorer.Hosting.RegistrationHandler`) and the
 Angular SPA currently connect with no credentials. So authentication is introduced as
 **opt-in**: the default configuration preserves today's open behaviour, and an operator
 turns it on once clients are ready.
 
-## Current state
+## Current state (before implementation)
+
+This section and the checklist below are the pre-implementation design record. The
+implementation now exists: see `src/DiagnosticService/Program.cs:57-62` (authentication
+scheme), `:166-176` (CORS), `:220-223` (hub `RequireAuthorization`) and
+`src/DiagnosticService/Common/ApiKeyAuthenticationHandler.cs`.
 
 - `Program.cs` maps `WebHub` (`/web-hub`) and `DiagnosticHub` (`/diagnostics`) with no
   `app.UseAuthentication()/UseAuthorization()` and no `[Authorize]`.
@@ -80,7 +85,7 @@ turns it on once clients are ready.
 ```
 
 - `AuthMode: None` (default) → no behavioural change. Existing trusted-network
-  deployments and EMS keep working untouched.
+  deployments and existing consumers keep working untouched.
 - `AuthMode: ApiKey` → every hub connection (and the negotiate request) must present a
   valid key.
 
@@ -121,17 +126,17 @@ turns it on once clients are ready.
 
 ## Why opt-in rather than mandatory
 
-Making auth mandatory now would break every existing diagnostic client and the EMS
-nupkg consumer flow at the moment of deploy. Opt-in lets a network-isolated deployment
+Making auth mandatory now would break every existing diagnostic client and the downstream
+package consumer flow at the moment of deploy. Opt-in lets a network-isolated deployment
 stay as-is while an exposed one can be locked down without a flag-day migration.
 
 ## Implementation checklist (follow-up batch)
 
-- [ ] `DiagServiceSettings.Security` POCO + binding + validation.
-- [ ] API-key `AuthenticationHandler` (header + `access_token` query for WS).
-- [ ] Conditional `UseAuthentication/UseAuthorization` + hub `RequireAuthorization`.
-- [ ] CORS: allowlist when configured, warn-on-permissive otherwise.
-- [ ] `DiagnosticOptions` API-key option + `RegistrationHandler` plumbing; make
+- [x] `DiagServiceSettings.Security` POCO + binding + validation.
+- [x] API-key `AuthenticationHandler` (header + `access_token` query for WS).
+- [x] Conditional `UseAuthentication/UseAuthorization` + hub `RequireAuthorization`.
+- [x] CORS: allowlist when configured, warn-on-permissive otherwise.
+- [x] `DiagnosticOptions` API-key option + `RegistrationHandler` plumbing; make
       `UseDefaultCredentials` opt-in (M23).
-- [ ] SPA `accessTokenFactory` + runtime config.
-- [ ] Docs: operator guide for enabling auth + rotating keys.
+- [x] SPA `accessTokenFactory` + runtime config.
+- [x] Docs: operator guide for enabling auth + rotating keys.

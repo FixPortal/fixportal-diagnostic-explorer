@@ -1,7 +1,8 @@
 # AI Findings Ledger
 
-GitHub's Copilot **AI Findings** set has no dismiss API or UI. This file substitutes for the missing
-dismiss UI — a finding present here with status `dismissed` or `fixed` does not need
+GitHub's Copilot **AI Findings** set has no dismiss API; its only GitHub-side disposition is the PR
+comment's Resolve action, which carries no reason and no comment. This file is the durable record of
+the verdict that Resolve cannot hold — a finding present here with status `dismissed` or `fixed` does not need
 re-investigation when it resurfaces.
 
 Scope is the AI Findings set only. **Code Quality** findings and **code-scanning security alerts**

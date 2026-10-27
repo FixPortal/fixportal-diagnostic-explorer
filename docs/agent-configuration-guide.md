@@ -213,7 +213,7 @@ presentation are not wired by the existing remote hosting API. They are
 [deliberately unported](upstream-integration-status.md#decision-hosting-parity-is-deliberately-unported);
 do not copy upstream SelfHost examples into this fork and expect them to start a listener.
 
-Deploy the compatible service before agents when moving to `4.0.0`. EMS realtime
-logging must switch from `DiagnosticAppender` to `RoutingDiagnosticAppender` with
+Deploy the compatible service before agents when moving to `4.0.0`. Realtime
+logging in consuming applications must switch from `DiagnosticAppender` to `RoutingDiagnosticAppender` with
 routing configured. The legacy appender is intentionally not bridged into the new
 stream. Package publication and consumer rollout are separate from this code port.

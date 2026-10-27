@@ -18,7 +18,7 @@ has landed and the deliberate hosting differences from upstream.
 
 The project originated as Cameron Elliot's open-source diagnostic
 toolset around 2010 (LGPL v3+) and has been carried forward as the
-diagnostic backbone for a production EMS trading platform and its
+diagnostic backbone for a production trading platform and its
 surrounding services.
 
 ## Repository layout
@@ -29,19 +29,32 @@ src/DiagnosticExplorer/      net10.0 / net48 core library
                                MessagePack transfer types, log4net forwarding
 src/DiagnosticExplorer.Hosting/
                              net10.0 / net48 hosting integration
-                             - AddDiagnosticExplorer DI extension,
-                               DiagnosticHostingService, RegistrationHandler
+                             - DiagnosticHostingService, RegistrationHandler;
+                               the AddDiagnosticExplorer /
+                               ConfigureDiagnosticExplorer DI extensions are
+                               compiled for net10.0 only (net48 uses the
+                               static DiagnosticHostingService.Start)
+src/DiagnosticExplorer.Extensions.Logging/
+src/DiagnosticExplorer.NLog/
+src/DiagnosticExplorer.Serilog/
+                             net10.0 / net48 logging adapters (log4net stays
+                             in the core assembly)
 src/DiagnosticService/       net10.0 standalone web service (Docker payload)
                              - ASP.NET Core + SignalR hubs + SPA host
-diagnostics-web/             Angular 22 SPA (the dashboard UI)
+diagnostics-web/             Angular 22 SPA (the dashboard UI); keeps the
+                             Realtime/Retro switch and the Trace Scope views
 Docker/                      Dockerfile and compose YAMLs for the service
+samples/Logging/             net10.0 / net48 logging adapter examples
 src/WidgetSample/            net10.0-windows / net48 WinForms demo
 src/ConsoleApp/              net10.0 CLI demo
+tests/                       DiagnosticExplorer.UnitTests, DiagnosticService.UnitTests
 ```
 
 ## Using the library
 
-Add the package reference:
+Add the package reference. The 4.0.0 packages are attached to the GitHub release
+(see [Releases](#releases)); they are not published to NuGet.org
+(`docs/releases/4.0.0.md`):
 
 ```xml
 <PackageReference Include="DiagnosticExplorer.Hosting" Version="4.0.0" />
@@ -81,17 +94,18 @@ Required configuration:
 }
 ```
 
-The `Uri` may be a comma-or-semicolon-separated list of hub URLs if you
-want a single application to report to multiple diagnostic servers.
+The `Uri` may be a list of hub URLs separated by commas, semicolons or
+whitespace if you want a single application to report to multiple diagnostic
+servers (`DiagnosticHostingService.cs:82`, split on `\s|;|,`).
 
 ### Tracing scopes
 
 ```csharp
 using (var scope = new TraceScope(Log.Info))
 {
-    TraceScope.Trace("Loaded {0} records", count);
+    TraceScope.Trace($"Loaded {count} records");
     // ... work ...
-    TraceScope.Trace("Completed in {0}ms", elapsed);
+    TraceScope.Trace($"Completed in {elapsed}ms");
 }
 ```
 
@@ -111,7 +125,10 @@ the image.
 # Build the image locally and bring up service + MongoDB:
 docker compose -f Docker/compose-and-create-image.yaml up -d --build
 
-# Or pull the published image from ghcr.io:
+# Or pull a published image from ghcr.io. This compose file defaults to the
+# upstream namespace (ghcr.io/cell001nz/diagnostic-explorer); to run this
+# fork's image set DIAGEXPLORER_IMAGE_NAME=ghcr.io/fixportal/diagnostic-explorer
+# first (see the table below):
 docker compose -f Docker/compose-with-existing-image.yaml up -d
 ```
 
@@ -125,14 +142,17 @@ compose file. Most-useful:
 | `GITHUB_PACKAGES_TOKEN` | required for local builds | Read the private FixPortal analyzer packages during image restore |
 | `DIAGEXPLORER_HOST_PORT` | `2803` | Host-side port mapping if 2803 is in use locally |
 | `MONGO_USERNAME` / `MONGO_PASSWORD` | `admin` / none (required) | Mongo root credentials |
-| `MONGO_HOST_PORT` | `27017` | Host-side port mapping if a native `mongod` already holds 27017 |
-| `DIAGEXPLORER_IMAGE_NAME` | `ghcr.io/fixportal/diagnostic-explorer` | Repoint at a fork's GHCR namespace |
-| `DIAGEXPLORER_IMAGE_TAG` | `latest` | Pin to a specific GHCR tag (e.g. `3.1.38`) |
+| `MONGO_HOST_PORT` | `27017` | `compose-with-existing-image.yaml` only: host-side port mapping if a native `mongod` already holds 27017. `compose-and-create-image.yaml` publishes Mongo on loopback `27019` and ignores this variable |
+| `DIAGEXPLORER_IMAGE_NAME` | `ghcr.io/cell001nz/diagnostic-explorer` | `compose-with-existing-image.yaml` only: registry path of the image. Set it to `ghcr.io/fixportal/diagnostic-explorer` for this fork's image |
+| `DIAGEXPLORER_IMAGE_TAG` | `latest` | `compose-with-existing-image.yaml` only: pin to a specific GHCR tag (e.g. `4.0.0`) |
 
-The service listens on port `2803` inside the container. Settings
-default to a Mongo backend at `mongodb:27017` (the sidecar in compose);
-override `DiagServiceSettings__RetroConnection` to point at a
-different store.
+The service listens on port `2803` inside the container. The service's own
+`Config/settings.json` defaults to `RetroType` `mongo` at
+`mongodb://localhost:27017`; both compose files override
+`DiagServiceSettings__RetroConnection` to the `mongodb:27017` sidecar. Override
+it to point at a different store. This fork also has an opt-in Azure Log
+Analytics Retro backend (`RetroType` `loganalytics`, `DiagServiceSettings.cs:20-21`);
+see `docs/retro-log-analytics-backend-spec.md`.
 
 ## Building from source
 
@@ -143,9 +163,9 @@ dotnet csharpier check .
 dotnet build DiagnosticExplorer.slnx --configuration Release --no-restore
 dotnet test --solution DiagnosticExplorer.slnx --configuration Release --no-build
 dotnet format DiagnosticExplorer.slnx --verify-no-changes --no-restore --exclude src/WidgetSample
-jb inspectcode DiagnosticExplorer.slnx --no-build --output=.claude/scratch/inspectcode.xml
+dotnet jb inspectcode DiagnosticExplorer.slnx --no-build --output=.claude/scratch/inspectcode.xml
 
-# Angular dashboard (Node 22.22.3, matching CI):
+# Angular dashboard (Node 22, matching the CI job and the Docker image):
 cd diagnostics-web
 npm ci
 npm test -- --runInBand
@@ -157,15 +177,17 @@ npm run build
 excludes it from cross-platform build configurations because its intentional
 `net10.0-windows` / `net48` targets require Windows; validate it separately with
 `dotnet build src/WidgetSample/WidgetSample.csproj --configuration Release`.
-The Roslyn formatter check also excludes that project: `dotnet format` cannot
-construct its multi-target workspace even though both targets build. CSharpier
-still checks the sample; remove this exception when `dotnet format` can load it.
+The local `dotnet format` command above excludes that project; CI does not run
+`dotnet format` at all (`.github/workflows/ci.yml` checks formatting with
+CSharpier only). UNVERIFIED: that `dotnet format` cannot construct the sample's
+multi-target workspace; refuted if `dotnet format` succeeds on it without the exclusion.
 The `net48` library and hosting targets are compatibility contracts for existing
 consumers and remain supported alongside the current `net10.0` targets.
 
 `diagnostics-web/.npmrc` pins `legacy-peer-deps=true`, so `npm ci` resolves the
-dependency graph without an explicit flag (the Angular build tooling's peer
-range for Tailwind lags the installed Tailwind 3).
+dependency graph without an explicit flag. Its recorded reason is that
+`primeng` 21.x declares an `@angular/*` ^21 peer while the app runs Angular 22
+(`diagnostics-web/.npmrc`).
 
 ### .NET unit tests
 
@@ -244,7 +266,8 @@ Vulnerability check:
 dotnet list DiagnosticExplorer.slnx package --vulnerable --include-transitive
 ```
 
-(Should report no vulnerable packages as of `3.2.2`.)
+UNVERIFIED: that this reports no vulnerable packages at `4.0.0`; the earlier
+"clean as of `3.2.2`" statement was not re-run. Refuted by any package the command lists.
 
 ## Contributing
 
@@ -274,15 +297,20 @@ package's settings page on GitHub.
 ## Releases
 
 The current release is [**4.0.0**](https://github.com/FixPortal/fixportal-diagnostic-explorer/releases/tag/v4.0.0).
-Download the packages and checksums from the release; EMS vendors the core and hosting
-packages through its local folder feed. See the [release and migration notes](docs/releases/4.0.0.md)
-before upgrading from **3.2.2**. Package publication does not establish consumer rollout.
+Download the packages and checksums from the release; consumers vendor the core and hosting
+packages through a local folder feed. See the [release and migration notes](docs/releases/4.0.0.md)
+before upgrading from **3.2.2** (an internal repackage of the 3.x line; the last 3.x tag in
+this repository is `v3.2.1`). Package publication does not establish consumer rollout.
 The libraries preserve the intentional `net48`
 compatibility targets while the current application and test scaffold use
 `.NET 10`.
 
-Versions are tagged `v{semver}` (e.g. `v3.2.2`); pushing the tag
-triggers a container-image publish to GHCR.
+Versions are tagged `v{semver}` (e.g. `v4.0.0`); pushing the tag
+triggers a container-image publish to GHCR, provided the tagged commit is
+reachable from `main` (`ci.yml`, "Assert the tagged commit is reachable from main").
+The `v5.*` tags present in a clone belong to upstream's own numbering (`v5.3.0`
+is upstream's `f8dbb59`, which is not in this fork's history); this fork's
+release line is `v3.x` then `v4.0.0`.
 
 ## License
 

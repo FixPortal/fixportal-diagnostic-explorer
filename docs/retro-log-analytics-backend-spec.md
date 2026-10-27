@@ -1,9 +1,9 @@
 # Spec / build prompt: Log Analytics backend for Retro
 
-**Status:** Implemented on `feat/retro-log-analytics-backend` (write + read paths). Live integration test + Angular delete-gating still pending.
+**Status:** Implemented (write + read paths); the code is on `main` (`src/DiagnosticService/Common/LogAnalyticsRetroLogger.cs`, added in `f1c42ac`). Angular delete-gating is done (`diagnostics-web/src/app/Model/RetroModel.ts:50`, `WebHub.RetroSupportsDelete` at `src/DiagnosticService/Hubs/WebHub.cs:82`, commit `ec3b4a5`). A live integration test exists but is opt-in: `tests/DiagnosticService.UnitTests/LogAnalyticsRetroLoggerIntegrationTests.cs:37-40` runs only when the `DIAG_LA_TEST_*` variables are set. UNVERIFIED: that it has been run against a deployed workspace; refuted by a retained run record.
 **Date:** 2026-06-07
 **Companion doc:** `docs/retro-vs-log-analytics-decision.md` (the why)
-**Branch:** `feat/retro-log-analytics-backend` (FixPortal fork). Lands as an **opt-in** backend — Mongo stays the default; validate the two open questions before relying on LA in production.
+**Branch:** originally `feat/retro-log-analytics-backend` (FixPortal fork; no longer present as a branch). Landed as an **opt-in** backend — Mongo stays the default; validate the two open questions before relying on LA in production.
 
 ### Build status (what landed)
 
@@ -12,8 +12,8 @@
 - `DiagServiceSettings`: `LogAnalytics` options + `"loganalytics"` factory case. `Config/settings.json` carries an empty `LogAnalytics` block (RetroType stays `mongo`).
 - `infra/retro-loganalytics.bicep` — authored for the target tenant (eastus2); compiles clean.
 - Packages: `Azure.Identity`, `Azure.Monitor.Ingestion` 1.2.0, `Azure.Monitor.Query` 1.7.1.
-- Tests: `LogAnalyticsRetroLoggerTests` (12) green; full `DiagnosticService.UnitTests` suite 22/22 green; service builds.
-- **Remaining:** (1) deploy the Bicep + dedicated SP and run the live round-trip / truncation test; (2) surface `SupportsDelete` to the Angular client to hide the delete button under LA (today LA `Delete` just fails safe with an error toast).
+- Tests: `LogAnalyticsRetroLoggerTests` (12 test attributes at the time of this audit); the 22/22 suite count recorded when this was written is superseded, and the current suite is larger (`docs/test-audit-c3-evidence-2026-10-15.md`).
+- **Remaining:** deploy the Bicep + dedicated SP and run the live round-trip / truncation test. (Surfacing `SupportsDelete` to the Angular client is done; see Status.)
 
 ---
 
@@ -32,7 +32,7 @@ This is an enlightenment / A-B experiment, not a migration. The MongoDB backend 
 
 ## 3. Hard constraint: local must stay cheap
 
-Until the entire EMS estate is in the cloud, running EMS locally against a *hosted* Retro would be cost-prohibitive (every local EMS process shipping logs to a billed LA workspace). Therefore:
+Until the whole consuming estate is in the cloud, running it locally against a *hosted* Retro would be cost-prohibitive (every local process shipping logs to a billed LA workspace). Therefore:
 
 - Local/dev/docker default **must remain `RetroType=mongo`** against the local container Mongo.
 - The LA backend is **opt-in only**, activated by config, for the cloud deployment and for deliberate local experimentation.
@@ -140,7 +140,7 @@ LA is append-only. There is **no interactive selective delete** (only per-table 
 1. **Message truncation (highest risk).** LA imposes size limits on string/dynamic column values and rows. The trace-scope tree lives inside `Message`; if LA truncates large messages, the client-side tree parse degrades. **Verify against the largest real production messages.** Mitigations if it bites: split `Message`/`Detail` into separate columns, store oversized detail compressed, or cap+flag. Track this as the gating acceptance test.
 2. **Table tier vs query features.** Analytics tier supports full KQL (`sort`, `matches regex`). Basic/Auxiliary tiers are cheaper for high-volume ingest but offer a *restricted* query experience — confirm `sort` + `matches regex` + `take` are all available on the chosen tier, or use Analytics tier (trivial cost at experiment volume). **Decision O-3.**
 3. **Ingestion latency** (~minutes). Fine functionally; affects test design (§11).
-4. **Cost shape.** LA bills per-GB ingested; a real EMS firehose is non-trivial — hence the local-stays-Mongo constraint. Keep the experiment workspace low-retention.
+4. **Cost shape.** LA bills per-GB ingested; a real production log firehose is non-trivial — hence the local-stays-Mongo constraint. Keep the experiment workspace low-retention.
 5. **KQL injection.** User-supplied filter/regex fields must be parameterised/escaped (§7).
 6. **`RecordId` vestigial** under LA — ensure nothing downstream hard-depends on it when the backend is LA.
 
@@ -230,7 +230,7 @@ Authored to match the host platform's existing infrastructure convention: `targe
 ```bicep
 targetScope = 'resourceGroup'
 
-@description('Short environment suffix, lowercase alphanumeric (matches ems-win-app convention, e.g. "dev", "exp").')
+@description('Short environment suffix, lowercase alphanumeric (e.g. "dev", "exp").')
 @maxLength(13)
 param envName string
 

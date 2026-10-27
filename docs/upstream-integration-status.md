@@ -29,7 +29,7 @@ without importing four copies of the upstream WinForms harness. The existing
 
 ## UI completion pass
 
-Completed in the `phase6-ui-completion` branch. Keep our `diagnostics-web`
+Completed on the `phase6-ui-completion` branch (no longer present in this repository; the behaviour is on `main`, e.g. `diagnostics-web/src/app/Model/EventSinkModel.ts` and `diagnostics-web/src/app/property-preview/`). Keep our `diagnostics-web`
 application, Realtime/Retro switch and Trace Scope views.
 
 | Status | Completed behavior |
@@ -52,8 +52,8 @@ tab is valuable fork functionality and should survive the next UI pass.
 ## Deployment boundary
 
 The project versions are `4.0.0`; this document does not establish a package release
-or an EMS upgrade. Deploy the compatible DiagnosticService before new agents.
-EMS must switch its realtime log4net configuration from `DiagnosticAppender` to
+or a consumer upgrade. Deploy the compatible DiagnosticService before new agents.
+Consumers must switch their realtime log4net configuration from `DiagnosticAppender` to
 `RoutingDiagnosticAppender` and supply routing. There is deliberately no bridge
 from the legacy appender to the new realtime stream.
 
@@ -62,7 +62,7 @@ from the legacy appender to the new realtime stream.
 Accepted 2026-09-08. Keep DiagnosticService and remote agents. Docker remains the
 published collector image; the existing ASP.NET Core collector also contains a
 Windows-service entry point. Reusing that collector on a Windows target does not
-require upstream SelfHost or a new installer. Some EMS targets use native Windows
+require upstream SelfHost or a new installer. Some targets use native Windows
 hosting, so Docker must not be assumed for every one.
 The functional integration against upstream `f8dbb59` is complete for remote agents;
 hosting parity is not unfinished merge work or a release prerequisite.
@@ -77,5 +77,5 @@ hosting API does not apply them. They are unsupported configuration, not working
 features. Clear rejection of unsupported options may be addressed separately;
 this decision does not implement new hosting behavior.
 
-Release packaging and the collector-first EMS rollout remain operational work.
+Release packaging and the collector-first consumer rollout remain operational work.
 See the [4.0.0 release notes](releases/4.0.0.md) for artifacts and migration order.

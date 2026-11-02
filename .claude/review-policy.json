@@ -38,6 +38,7 @@
   "version": 1,
 
   "high": [
+    ".github/scripts/test_build_stryker.py",
     ".github/scripts/compile_retro_schema.py",
     ".github/scripts/retro_schema_workflow.py",
     ".github/scripts/test_compile_retro_schema.py",

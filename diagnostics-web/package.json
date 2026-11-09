@@ -20,7 +20,9 @@
     "postcss-nested": {
       "postcss-selector-parser": "7.1.6"
     },
-    "qs": "6.16.0",
+    "glob": "^14.0.4",
+    "minimatch": "^11.0.5",
+    "qs": "6.16.1",
     "sockjs": {
       "uuid": "11.1.1"
     },
